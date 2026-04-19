@@ -30,7 +30,6 @@ export default function LoginScreen() {
   const {
     control,
     handleSubmit,
-    getValues,
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -50,18 +49,8 @@ export default function LoginScreen() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    const email = getValues('email').trim();
-    if (!email) {
-      toast.info('Enter your email above, then tap Forgot Password.', 'Email required');
-      return;
-    }
-    const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase());
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success(`A reset link has been sent to ${email}.`, 'Check your inbox');
-    }
+  const handleForgotPassword = () => {
+    router.push('/(auth)/forgot-password');
   };
 
   return (
