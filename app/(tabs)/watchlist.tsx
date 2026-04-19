@@ -5,60 +5,32 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { watchlistApi, type WatchlistStock } from '@/lib/api';
-import { Colors, Radius } from '@/constants/theme';
+import { useWatchlist, useAddStock, useRemoveStock } from '@/hooks/use-watchlist';
+import { type WatchlistStock } from '@/lib/api';
+import { useTheme } from '@/context/theme-context';
+import { Radius } from '@/constants/theme';
+import { SkeletonListScreen } from '@/components/skeleton';
 
 export default function WatchlistScreen() {
-  const [stocks, setStocks] = useState<WatchlistStock[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [addSymbol, setAddSymbol] = useState('');
-  const [adding, setAdding] = useState(false);
 
-  const loadStocks = useCallback(async () => {
-    try {
-      setError(null);
-      const data = await watchlistApi.getAll();
-      setStocks(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load watchlist');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const { data: stocks = [], isLoading, isError, error, refetch, isRefetching } = useWatchlist();
+  const { mutate: addStock, isPending: adding } = useAddStock();
+  const { mutate: removeStock } = useRemoveStock();
 
-  useEffect(() => {
-    loadStocks();
-  }, [loadStocks]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadStocks();
-  };
-
-  const handleAdd = async () => {
+  const handleAdd = () => {
     const sym = addSymbol.trim().toUpperCase();
     if (!sym) return;
-    setAdding(true);
-    try {
-      await watchlistApi.add(sym);
-      setAddSymbol('');
-      await loadStocks();
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to add stock');
-    } finally {
-      setAdding(false);
-    }
+    addStock(sym, { onSuccess: () => setAddSymbol('') });
   };
 
   const handleDelete = (symbol: string) => {
@@ -70,14 +42,7 @@ export default function WatchlistScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await watchlistApi.remove(symbol);
-              setStocks((prev) => prev.filter((s) => s.symbol !== symbol));
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to remove');
-            }
-          },
+          onPress: () => removeStock(symbol),
         },
       ]
     );
@@ -96,7 +61,7 @@ export default function WatchlistScreen() {
         <TextInput
           style={styles.input}
           placeholder="Add symbol (e.g. AAPL)"
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={colors.textMuted}
           value={addSymbol}
           onChangeText={setAddSymbol}
           autoCapitalize="characters"
@@ -108,30 +73,26 @@ export default function WatchlistScreen() {
           onPress={handleAdd}
           disabled={!addSymbol.trim() || adding}
         >
-          {adding ? (
-            <ActivityIndicator size="small" color={Colors.dark} />
-          ) : (
-            <Ionicons name="add" size={22} color={Colors.dark} />
-          )}
+          <Ionicons name="add" size={22} color={colors.onPrimary} />
         </TouchableOpacity>
       </View>
 
-      {error && (
+      {isError && (
         <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={loadStocks}>
+          <Text style={styles.errorText}>
+            {error instanceof Error ? error.message : 'Failed to load watchlist'}
+          </Text>
+          <TouchableOpacity onPress={() => refetch()}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
+      {isLoading ? (
+        <SkeletonListScreen count={5} />
       ) : stocks.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="star-outline" size={56} color={Colors.border} />
+          <Ionicons name="star-outline" size={56} color={colors.border} />
           <Text style={styles.emptyTitle}>No stocks yet</Text>
           <Text style={styles.emptyText}>
             Add stock symbols above to start monitoring for RSI and 52-week alerts.
@@ -142,11 +103,11 @@ export default function WatchlistScreen() {
           data={stocks}
           keyExtractor={(item) => item.symbol}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
           }
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <WatchlistRow stock={item} onDelete={handleDelete} />
+            <WatchlistRow stock={item} onDelete={handleDelete} colors={colors} styles={styles} />
           )}
         />
       )}
@@ -157,13 +118,17 @@ export default function WatchlistScreen() {
 function WatchlistRow({
   stock,
   onDelete,
+  colors,
+  styles,
 }: {
   stock: WatchlistStock;
   onDelete: (symbol: string) => void;
+  colors: ReturnType<typeof useTheme>['colors'];
+  styles: ReturnType<typeof createStyles>;
 }) {
   const quote = stock.quote;
   const isPositive = (quote?.changePercent ?? 0) >= 0;
-  const changeColor = isPositive ? Colors.positive : Colors.negative;
+  const changeColor = isPositive ? colors.positive : colors.negative;
 
   return (
     <TouchableOpacity
@@ -201,103 +166,104 @@ function WatchlistRow({
         onPress={() => onDelete(stock.symbol)}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Ionicons name="trash-outline" size={18} color={Colors.negative} />
+        <Ionicons name="trash-outline" size={18} color={colors.negative} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.background },
 
-  header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  title: { fontSize: 26, fontWeight: '800', color: Colors.textPrimary },
-  subtitle: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
+    header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
+    title: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
+    subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
 
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: Colors.textPrimary,
-  },
-  addBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnDisabled: { opacity: 0.5 },
+    addRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      gap: 10,
+    },
+    input: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: Radius.full,
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+      fontSize: 14,
+      color: colors.textPrimary,
+    },
+    addBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addBtnDisabled: { opacity: 0.5 },
 
-  errorCard: {
-    marginHorizontal: 20,
-    marginBottom: 8,
-    backgroundColor: '#FEF2F2',
-    borderRadius: Radius.md,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  errorText: { color: Colors.negative, fontSize: 13 },
-  retryText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
+    errorCard: {
+      marginHorizontal: 20,
+      marginBottom: 8,
+      backgroundColor: '#FEF2F2',
+      borderRadius: Radius.md,
+      padding: 12,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    errorText: { color: colors.negative, fontSize: 13 },
+    retryText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
 
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+    empty: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 40,
+    },
+    emptyTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    emptyText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
 
-  list: { paddingHorizontal: 20, paddingBottom: 20 },
+    list: { paddingHorizontal: 20, paddingBottom: 20 },
 
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    gap: 12,
-  },
-  logoWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: { fontSize: 13, fontWeight: '700', color: Colors.dark },
-  rowInfo: { flex: 1 },
-  rowSymbol: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
-  rowName: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  rowPrice: { alignItems: 'flex-end' },
-  priceText: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
-  changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  noData: { fontSize: 12, color: Colors.textMuted },
-  deleteBtn: { padding: 4 },
-});
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: 12,
+    },
+    logoWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    logoText: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+    rowInfo: { flex: 1 },
+    rowSymbol: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    rowName: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+    rowPrice: { alignItems: 'flex-end' },
+    priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+    noData: { fontSize: 12, color: colors.textMuted },
+    deleteBtn: { padding: 4 },
+  });
+}

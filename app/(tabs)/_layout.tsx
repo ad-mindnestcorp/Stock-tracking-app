@@ -1,26 +1,28 @@
 import { Tabs, Redirect } from 'expo-router';
 import { StyleSheet, View, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/theme';
+import { useTheme } from '@/context/theme-context';
 import { useAuth } from '@/context/auth';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 function TabIcon({ name, color, focused }: { name: IconName; color: string; focused: boolean }) {
+  const { colors } = useTheme();
   return (
-    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-      <Ionicons name={name} size={22} color={focused ? Colors.dark : color} />
+    <View style={[styles.iconWrap, focused && { backgroundColor: colors.primary }]}>
+      <Ionicons name={name} size={22} color={focused ? colors.onPrimary : color} />
     </View>
   );
 }
 
 export default function TabLayout() {
   const { session, loading } = useAuth();
+  const { colors } = useTheme();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
   }
@@ -33,11 +35,17 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          backgroundColor: colors.tabBar,
+          borderTopWidth: 0,
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+          paddingTop: 8,
+        },
         tabBarShowLabel: true,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.tabBarInactive,
+        tabBarActiveTintColor: colors.tabBarActive,
+        tabBarInactiveTintColor: colors.tabBarInactive,
       }}
     >
       <Tabs.Screen
@@ -90,13 +98,6 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: Colors.dark,
-    borderTopWidth: 0,
-    height: Platform.OS === 'ios' ? 84 : 64,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-    paddingTop: 8,
-  },
   tabLabel: {
     fontSize: 10,
     fontWeight: '500',
@@ -107,8 +108,5 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconWrapActive: {
-    backgroundColor: Colors.primary,
   },
 });

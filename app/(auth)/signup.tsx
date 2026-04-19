@@ -8,56 +8,52 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
-import { Colors, Radius } from '@/constants/theme';
+import { signupSchema, type SignupFormValues } from '@/lib/schemas';
+import { toast } from '@/lib/toast';
+import { useTheme } from '@/context/theme-context';
+import { Radius } from '@/constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function SignupScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const handleSignup = async () => {
-    if (!email.trim() || !password || !confirmPassword) {
-      Alert.alert('Missing fields', 'Please fill in all fields.');
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert('Weak password', 'Password must be at least 6 characters.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      Alert.alert('Password mismatch', 'Passwords do not match.');
-      return;
-    }
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SignupFormValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: { email: '', password: '', confirmPassword: '' },
+  });
 
+  const onSignup = async (data: SignupFormValues) => {
     setLoading(true);
     const { error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
     });
     setLoading(false);
 
     if (error) {
-      Alert.alert('Sign up failed', error.message);
+      toast.error(error.message, 'Sign up failed');
     } else {
-      Alert.alert(
-        'Verify your email',
-        'A confirmation link has been sent to your email. Please verify your account before logging in.',
-        [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
-      );
+      router.replace('/(auth)/login');
+      toast.success('A confirmation link has been sent — please verify before logging in.', 'Check your inbox');
     }
   };
 
@@ -68,10 +64,7 @@ export default function SignupScreen() {
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-        },
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
       });
 
       if (error) throw error;
@@ -81,8 +74,6 @@ export default function SignupScreen() {
 
       if (result.type === 'success') {
         const url = result.url;
-
-        // PKCE flow: extract ?code= from query params
         const codeMatch = url.match(/[?&]code=([^&]+)/);
         if (codeMatch?.[1]) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(
@@ -90,7 +81,6 @@ export default function SignupScreen() {
           );
           if (exchangeError) throw exchangeError;
         } else {
-          // Implicit flow fallback: extract tokens from URL fragment
           const fragment = url.split('#')[1] ?? '';
           const params = new URLSearchParams(fragment);
           const access_token = params.get('access_token');
@@ -106,7 +96,7 @@ export default function SignupScreen() {
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Google sign-in failed.';
-      Alert.alert('Google sign-in error', message);
+      toast.error(message, 'Google sign-in error');
     } finally {
       setGoogleLoading(false);
     }
@@ -125,10 +115,10 @@ export default function SignupScreen() {
         {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="chevron-back" size={24} color={Colors.dark} />
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.logoRow}>
-            <Ionicons name="bar-chart" size={20} color={Colors.dark} />
+            <Ionicons name="bar-chart" size={20} color={colors.textPrimary} />
             <Text style={styles.logoText}>
               Stockve<Text style={styles.logoHighlight}>st</Text>
             </Text>
@@ -139,88 +129,112 @@ export default function SignupScreen() {
         <Text style={styles.heading}>Sign Up</Text>
 
         {/* Email */}
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={Colors.textMuted}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="next"
-          />
-        </View>
+        <Controller
+          control={control}
+          name="email"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError]}
+                placeholder="Email"
+                placeholderTextColor={colors.textMuted}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+              {errors.email && <Text style={styles.fieldError}>{errors.email.message}</Text>}
+            </View>
+          )}
+        />
 
         {/* Password */}
-        <View>
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={[styles.input, styles.inputWithIcon]}
-              placeholder="Password"
-              placeholderTextColor={Colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              returnKeyType="next"
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowPassword((v) => !v)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
-                color={Colors.textMuted}
+        <Controller
+          control={control}
+          name="password"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={[styles.input, styles.inputWithIcon, errors.password && styles.inputError]}
+                placeholder="Password"
+                placeholderTextColor={colors.textMuted}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                returnKeyType="next"
               />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.hint}>Minimum 6 characters with numbers</Text>
-        </View>
+              <TouchableOpacity
+                style={styles.eyeBtn}
+                onPress={() => setShowPassword((v) => !v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </TouchableOpacity>
+              {errors.password ? (
+                <Text style={styles.fieldError}>{errors.password.message}</Text>
+              ) : (
+                <Text style={styles.hint}>Minimum 6 characters</Text>
+              )}
+            </View>
+          )}
+        />
 
         {/* Confirm Password */}
-        <View style={{ marginTop: 8 }}>
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={[styles.input, styles.inputWithIcon]}
-              placeholder="Confirm Password"
-              placeholderTextColor={Colors.textMuted}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry={!showConfirm}
-              autoCapitalize="none"
-              returnKeyType="done"
-              onSubmitEditing={handleSignup}
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowConfirm((v) => !v)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name={showConfirm ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
-                color={Colors.textMuted}
+        <Controller
+          control={control}
+          name="confirmPassword"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={[styles.input, styles.inputWithIcon, errors.confirmPassword && styles.inputError]}
+                placeholder="Confirm Password"
+                placeholderTextColor={colors.textMuted}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                secureTextEntry={!showConfirm}
+                autoCapitalize="none"
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit(onSignup)}
               />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.hint}>Minimum 6 characters with numbers</Text>
-        </View>
+              <TouchableOpacity
+                style={styles.eyeBtn}
+                onPress={() => setShowConfirm((v) => !v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name={showConfirm ? 'eye-outline' : 'eye-off-outline'}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </TouchableOpacity>
+              {errors.confirmPassword && (
+                <Text style={styles.fieldError}>{errors.confirmPassword.message}</Text>
+              )}
+            </View>
+          )}
+        />
 
         <View style={{ height: 24 }} />
 
-        {/* Registration button */}
+        {/* Sign up button */}
         <TouchableOpacity
           style={[styles.primaryBtn, loading && styles.btnDisabled]}
-          onPress={handleSignup}
+          onPress={handleSubmit(onSignup)}
           disabled={loading || googleLoading}
           activeOpacity={0.85}
         >
           {loading ? (
-            <ActivityIndicator color={Colors.dark} />
+            <ActivityIndicator color={colors.onPrimary} />
           ) : (
             <Text style={styles.primaryBtnText}>Registration</Text>
           )}
@@ -234,7 +248,7 @@ export default function SignupScreen() {
           activeOpacity={0.85}
         >
           {googleLoading ? (
-            <ActivityIndicator color={Colors.dark} />
+            <ActivityIndicator color={colors.textPrimary} />
           ) : (
             <>
               <GoogleIcon />
@@ -243,10 +257,8 @@ export default function SignupScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Divider */}
         <Text style={styles.dividerText}>Already have an account?</Text>
 
-        {/* Login button */}
         <TouchableOpacity
           style={styles.outlineBtn}
           onPress={() => router.replace('/(auth)/login')}
@@ -283,127 +295,138 @@ const googleIconStyles = StyleSheet.create({
   },
 });
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 56,
-    paddingBottom: 40,
-  },
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scroll: {
+      flexGrow: 1,
+      paddingHorizontal: 24,
+      paddingTop: 56,
+      paddingBottom: 40,
+    },
 
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 36,
-  },
-  logoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  logoText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.dark,
-  },
-  logoHighlight: {
-    backgroundColor: Colors.primary,
-    color: Colors.dark,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 36,
+    },
+    logoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    logoText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    logoHighlight: {
+      backgroundColor: colors.primary,
+      color: colors.onPrimary,
+      borderRadius: 4,
+      overflow: 'hidden',
+    },
 
-  heading: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: Colors.dark,
-    textAlign: 'center',
-    marginBottom: 32,
-  },
+    heading: {
+      fontSize: 28,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      marginBottom: 32,
+    },
 
-  inputWrap: {
-    position: 'relative',
-  },
-  input: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    paddingHorizontal: 20,
-    paddingVertical: Platform.OS === 'ios' ? 16 : 14,
-    fontSize: 15,
-    color: Colors.textPrimary,
-  },
-  inputWithIcon: {
-    paddingRight: 52,
-  },
-  eyeBtn: {
-    position: 'absolute',
-    right: 18,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  hint: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginTop: 6,
-    marginLeft: 4,
-    marginBottom: 4,
-  },
+    inputWrap: {
+      marginBottom: 16,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.full,
+      paddingHorizontal: 20,
+      paddingVertical: Platform.OS === 'ios' ? 16 : 14,
+      fontSize: 15,
+      color: colors.textPrimary,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    inputError: {
+      borderColor: colors.negative,
+    },
+    inputWithIcon: {
+      paddingRight: 52,
+    },
+    eyeBtn: {
+      position: 'absolute',
+      right: 18,
+      top: Platform.OS === 'ios' ? 16 : 14,
+      justifyContent: 'center',
+    },
+    fieldError: {
+      fontSize: 12,
+      color: colors.negative,
+      marginTop: 4,
+      marginLeft: 4,
+    },
+    hint: {
+      fontSize: 12,
+      color: colors.textMuted,
+      marginTop: 6,
+      marginLeft: 4,
+    },
 
-  primaryBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  btnDisabled: {
-    opacity: 0.7,
-  },
-  primaryBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.dark,
-  },
+    primaryBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: Radius.full,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    btnDisabled: {
+      opacity: 0.7,
+    },
+    primaryBtnText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.onPrimary,
+    },
 
-  googleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingVertical: 15,
-    marginBottom: 20,
-  },
-  googleBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.dark,
-  },
+    googleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      borderRadius: Radius.full,
+      paddingVertical: 15,
+      marginBottom: 20,
+    },
+    googleBtnText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
 
-  dividerText: {
-    textAlign: 'center',
-    color: Colors.textMuted,
-    fontSize: 14,
-    marginBottom: 12,
-  },
+    dividerText: {
+      textAlign: 'center',
+      color: colors.textMuted,
+      fontSize: 14,
+      marginBottom: 12,
+    },
 
-  outlineBtn: {
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  outlineBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.dark,
-  },
-});
+    outlineBtn: {
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      borderRadius: Radius.full,
+      paddingVertical: 15,
+      alignItems: 'center',
+    },
+    outlineBtnText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+  });
+}

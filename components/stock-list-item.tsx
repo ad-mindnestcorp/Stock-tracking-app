@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
-import { Colors, Radius, Shadow } from '@/constants/theme';
+import { useTheme } from '@/context/theme-context';
+import { Radius, Shadow } from '@/constants/theme';
 import type { StockQuote } from '@/lib/api';
 
 interface StockListItemProps {
@@ -26,12 +28,15 @@ function getCompanyName(item: StockListItemProps['item']): string {
 }
 
 export default function StockListItem({ item, showCard = false }: StockListItemProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const symbol = getSymbol(item);
   const quote = getQuote(item);
   const companyName = getCompanyName(item);
 
   const isPositive = (quote?.changePercent ?? 0) >= 0;
-  const changeColor = isPositive ? Colors.positive : Colors.negative;
+  const changeColor = isPositive ? colors.positive : colors.negative;
 
   return (
     <TouchableOpacity
@@ -39,8 +44,7 @@ export default function StockListItem({ item, showCard = false }: StockListItemP
       onPress={() => router.push(`/stock/${symbol}`)}
       activeOpacity={0.7}
     >
-      {/* Logo placeholder */}
-      <View style={[styles.logo, { backgroundColor: Colors.surface }]}>
+      <View style={styles.logo}>
         <Text style={styles.logoText}>{symbol.slice(0, 2)}</Text>
       </View>
 
@@ -65,64 +69,44 @@ export default function StockListItem({ item, showCard = false }: StockListItemP
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  card: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: Radius.md,
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    borderBottomWidth: 0,
-    ...Shadow.card,
-  },
-  logo: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  logoText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.dark,
-  },
-  info: {
-    flex: 1,
-  },
-  symbol: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  name: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  price: {
-    alignItems: 'flex-end',
-  },
-  priceText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  change: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  noData: {
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
-});
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+      borderRadius: Radius.md,
+      paddingHorizontal: 16,
+      marginBottom: 10,
+      borderBottomWidth: 0,
+      ...Shadow.card,
+    },
+    logo: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    logoText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    info: { flex: 1 },
+    symbol: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    name: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+    price: { alignItems: 'flex-end' },
+    priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    change: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+    noData: { fontSize: 14, color: colors.textMuted },
+  });
+}

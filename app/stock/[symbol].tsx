@@ -6,100 +6,60 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   SafeAreaView,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { marketApi, watchlistApi, type StockDetail, type CandleData } from '@/lib/api';
-import { Colors, Radius } from '@/constants/theme';
+import { useStockDetail, useCandles, type CandleRange } from '@/hooks/use-stock-detail';
+import { useAddStock, useRemoveStock, useWatchlist } from '@/hooks/use-watchlist';
+import { useTheme } from '@/context/theme-context';
+import { Radius } from '@/constants/theme';
 import LineChart from '@/components/line-chart';
 
-type Range = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y';
-const RANGES: Range[] = ['1D', '1W', '1M', '3M', '6M', '1Y'];
+const RANGES: CandleRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y'];
 
 export default function StockDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [selectedRange, setSelectedRange] = useState<CandleRange>('1M');
 
-  const [detail, setDetail] = useState<StockDetail | null>(null);
-  const [candles, setCandles] = useState<CandleData | null>(null);
-  const [selectedRange, setSelectedRange] = useState<Range>('1M');
-  const [loading, setLoading] = useState(true);
-  const [candleLoading, setCandleLoading] = useState(false);
-  const [inWatchlist, setInWatchlist] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data: detail, isLoading, isError, error } = useStockDetail(symbol ?? '');
+  const { data: candles, isLoading: candleLoading } = useCandles(symbol ?? '', selectedRange);
+  const { data: watchlist = [] } = useWatchlist();
+  const { mutate: addStock } = useAddStock();
+  const { mutate: removeStock } = useRemoveStock();
 
-  const loadDetail = useCallback(async () => {
-    if (!symbol) return;
-    try {
-      setError(null);
-      const data = await marketApi.getDetail(symbol);
-      setDetail(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load stock data');
-    } finally {
-      setLoading(false);
-    }
-  }, [symbol]);
-
-  const loadCandles = useCallback(async (range: Range) => {
-    if (!symbol) return;
-    setCandleLoading(true);
-    try {
-      const data = await marketApi.getCandles(symbol, range);
-      setCandles(data);
-    } catch {
-      setCandles(null);
-    } finally {
-      setCandleLoading(false);
-    }
-  }, [symbol]);
-
-  useEffect(() => {
-    loadDetail();
-    loadCandles('1M');
-  }, [loadDetail, loadCandles]);
-
-  const handleRangeChange = (range: Range) => {
-    setSelectedRange(range);
-    loadCandles(range);
-  };
-
-  const handleWatchlistToggle = async () => {
-    if (!symbol) return;
-    try {
-      if (inWatchlist) {
-        await watchlistApi.remove(symbol);
-        setInWatchlist(false);
-      } else {
-        await watchlistApi.add(symbol, detail?.profile?.name);
-        setInWatchlist(true);
-      }
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update watchlist');
-    }
-  };
-
-  const chartColor = (detail?.changePercent ?? 0) >= 0 ? Colors.positive : Colors.negative;
-  const isPositive = (detail?.changePercent ?? 0) >= 0;
+  const inWatchlist = watchlist.some((s) => s.symbol === symbol);
   const chartWidth = width - 40;
 
-  if (loading) {
+  const handleWatchlistToggle = () => {
+    if (!symbol) return;
+    if (inWatchlist) {
+      removeStock(symbol);
+    } else {
+      addStock(symbol);
+    }
+  };
+
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading {symbol}...</Text>
       </SafeAreaView>
     );
   }
 
-  if (error || !detail) {
+  if (isError || !detail) {
     return (
       <SafeAreaView style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={48} color={Colors.negative} />
-        <Text style={styles.errorText}>{error ?? 'Stock not found'}</Text>
+        <Ionicons name="alert-circle-outline" size={48} color={colors.negative} />
+        <Text style={styles.errorText}>
+          {error instanceof Error ? error.message : 'Stock not found'}
+        </Text>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backBtnText}>Go Back</Text>
         </TouchableOpacity>
@@ -107,13 +67,14 @@ export default function StockDetailScreen() {
     );
   }
 
-  const changeColor = isPositive ? Colors.positive : Colors.negative;
+  const isPositive = (detail.changePercent ?? 0) >= 0;
+  const changeColor = isPositive ? colors.positive : colors.negative;
+  const chartColor = changeColor;
 
-  // RSI color
   const getRsiColor = () => {
-    if (detail.isOverbought) return Colors.alertRsiOB;
-    if (detail.isOversold) return Colors.alertRsiOS;
-    return Colors.textSecondary;
+    if (detail.isOverbought) return colors.alertRsiOB;
+    if (detail.isOversold) return colors.alertRsiOS;
+    return colors.textSecondary;
   };
 
   const getRsiLabel = () => {
@@ -122,7 +83,6 @@ export default function StockDetailScreen() {
     return 'NEUTRAL';
   };
 
-  // 52W progress
   const week52Range = (detail.week52High ?? 0) - (detail.week52Low ?? 0);
   const pricePosition =
     week52Range > 0
@@ -135,14 +95,14 @@ export default function StockDetailScreen() {
         {/* Nav bar */}
         <View style={styles.nav}>
           <TouchableOpacity onPress={() => router.back()} style={styles.navBtn}>
-            <Ionicons name="chevron-back" size={24} color={Colors.dark} />
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           <TouchableOpacity style={styles.navBtn} onPress={handleWatchlistToggle}>
             <Ionicons
               name={inWatchlist ? 'star' : 'star-outline'}
               size={22}
-              color={inWatchlist ? Colors.primary : Colors.dark}
+              color={inWatchlist ? colors.primary : colors.textPrimary}
             />
           </TouchableOpacity>
         </View>
@@ -180,15 +140,10 @@ export default function StockDetailScreen() {
         <View style={styles.chartSection}>
           {candleLoading ? (
             <View style={[styles.chartPlaceholder, { width: chartWidth }]}>
-              <ActivityIndicator color={Colors.primary} />
+              <ActivityIndicator color={colors.primary} />
             </View>
           ) : candles && candles.close.length > 1 ? (
-            <LineChart
-              data={candles.close}
-              width={chartWidth}
-              height={160}
-              color={chartColor}
-            />
+            <LineChart data={candles.close} width={chartWidth} height={160} color={chartColor} />
           ) : (
             <View style={[styles.chartPlaceholder, { width: chartWidth }]}>
               <Text style={styles.noChartText}>Chart unavailable</Text>
@@ -201,7 +156,7 @@ export default function StockDetailScreen() {
               <TouchableOpacity
                 key={r}
                 style={[styles.rangeBtn, selectedRange === r && styles.rangeBtnActive]}
-                onPress={() => handleRangeChange(r)}
+                onPress={() => setSelectedRange(r)}
               >
                 <Text style={[styles.rangeText, selectedRange === r && styles.rangeTextActive]}>
                   {r}
@@ -216,10 +171,10 @@ export default function StockDetailScreen() {
           <Text style={styles.statsTitle}>Key Statistics</Text>
 
           <View style={styles.statsGrid}>
-            <StatItem label="Open" value={`$${detail.open?.toFixed(2) ?? '—'}`} />
-            <StatItem label="High" value={`$${detail.high?.toFixed(2) ?? '—'}`} />
-            <StatItem label="Low" value={`$${detail.low?.toFixed(2) ?? '—'}`} />
-            <StatItem label="Prev Close" value={`$${detail.previousClose?.toFixed(2) ?? '—'}`} />
+            <StatItem label="Open" value={`$${detail.open?.toFixed(2) ?? '—'}`} colors={colors} styles={styles} />
+            <StatItem label="High" value={`$${detail.high?.toFixed(2) ?? '—'}`} colors={colors} styles={styles} />
+            <StatItem label="Low" value={`$${detail.low?.toFixed(2) ?? '—'}`} colors={colors} styles={styles} />
+            <StatItem label="Prev Close" value={`$${detail.previousClose?.toFixed(2) ?? '—'}`} colors={colors} styles={styles} />
           </View>
 
           {/* RSI */}
@@ -247,8 +202,8 @@ export default function StockDetailScreen() {
               </View>
               <View style={styles.rsiBarLabels}>
                 <Text style={styles.rsiBarLabel}>0</Text>
-                <Text style={[styles.rsiBarLabel, { color: Colors.alertRsiOS }]}>30</Text>
-                <Text style={[styles.rsiBarLabel, { color: Colors.alertRsiOB }]}>70</Text>
+                <Text style={[styles.rsiBarLabel, { color: colors.alertRsiOS }]}>30</Text>
+                <Text style={[styles.rsiBarLabel, { color: colors.alertRsiOB }]}>70</Text>
                 <Text style={styles.rsiBarLabel}>100</Text>
               </View>
             </View>
@@ -259,10 +214,10 @@ export default function StockDetailScreen() {
             <View style={styles.week52Card}>
               <Text style={styles.week52Title}>52-Week Range</Text>
               <View style={styles.week52Row}>
-                <Text style={[styles.week52Val, { color: Colors.negative }]}>
+                <Text style={[styles.week52Val, { color: colors.negative }]}>
                   ${detail.week52Low.toFixed(2)}
                 </Text>
-                <Text style={[styles.week52Val, { color: Colors.positive }]}>
+                <Text style={[styles.week52Val, { color: colors.positive }]}>
                   ${detail.week52High.toFixed(2)}
                 </Text>
               </View>
@@ -292,9 +247,9 @@ export default function StockDetailScreen() {
             <Ionicons
               name={inWatchlist ? 'star' : 'star-outline'}
               size={20}
-              color={inWatchlist ? Colors.dark : Colors.dark}
+              color={inWatchlist ? colors.textPrimary : colors.onPrimary}
             />
-            <Text style={styles.ctaBtnText}>
+            <Text style={[styles.ctaBtnText, inWatchlist && { color: colors.textPrimary }]}>
               {inWatchlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
             </Text>
           </TouchableOpacity>
@@ -304,7 +259,17 @@ export default function StockDetailScreen() {
   );
 }
 
-function StatItem({ label, value }: { label: string; value: string }) {
+function StatItem({
+  label,
+  value,
+  colors,
+  styles,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+  styles: ReturnType<typeof createStyles>;
+}) {
   return (
     <View style={styles.statItem}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -313,159 +278,185 @@ function StatItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
-  loadingText: { marginTop: 12, color: Colors.textSecondary, fontSize: 14 },
-  errorText: { marginTop: 12, color: Colors.negative, fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
-  backBtn: { marginTop: 20, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: Radius.full },
-  backBtnText: { fontSize: 15, fontWeight: '700', color: Colors.dark },
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.background },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+    },
+    loadingText: { marginTop: 12, color: colors.textSecondary, fontSize: 14 },
+    errorText: {
+      marginTop: 12,
+      color: colors.negative,
+      fontSize: 15,
+      textAlign: 'center',
+      paddingHorizontal: 32,
+    },
+    backBtn: {
+      marginTop: 20,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderRadius: Radius.full,
+    },
+    backBtnText: { fontSize: 15, fontWeight: '700', color: colors.onPrimary },
 
-  nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    nav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    navBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  companyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    gap: 12,
-  },
-  companyLogo: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  companyLogoText: { fontSize: 16, fontWeight: '800', color: Colors.dark },
-  symbolText: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary },
-  companyName: { fontSize: 13, color: Colors.textSecondary, marginTop: 2, maxWidth: 220 },
+    companyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingBottom: 12,
+      gap: 12,
+    },
+    companyLogo: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    companyLogoText: { fontSize: 16, fontWeight: '800', color: colors.textPrimary },
+    symbolText: { fontSize: 18, fontWeight: '800', color: colors.textPrimary },
+    companyName: { fontSize: 13, color: colors.textSecondary, marginTop: 2, maxWidth: 220 },
 
-  priceSection: { paddingHorizontal: 20, marginBottom: 16 },
-  price: { fontSize: 36, fontWeight: '800', color: Colors.textPrimary },
-  changeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  change: { fontSize: 15, fontWeight: '600' },
+    priceSection: { paddingHorizontal: 20, marginBottom: 16 },
+    price: { fontSize: 36, fontWeight: '800', color: colors.textPrimary },
+    changeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+    change: { fontSize: 15, fontWeight: '600' },
 
-  chartSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  chartPlaceholder: {
-    height: 160,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    marginBottom: 12,
-  },
-  noChartText: { color: Colors.textMuted, fontSize: 13 },
+    chartSection: { paddingHorizontal: 20, marginBottom: 20 },
+    chartPlaceholder: {
+      height: 160,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      marginBottom: 12,
+    },
+    noChartText: { color: colors.textMuted, fontSize: 13 },
 
-  ranges: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 12,
-    justifyContent: 'space-between',
-  },
-  rangeBtn: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-  },
-  rangeBtnActive: { backgroundColor: Colors.dark },
-  rangeText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
-  rangeTextActive: { color: Colors.primary },
+    ranges: {
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 12,
+      justifyContent: 'space-between',
+    },
+    rangeBtn: {
+      flex: 1,
+      paddingVertical: 7,
+      borderRadius: Radius.full,
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+    },
+    rangeBtnActive: { backgroundColor: colors.dark },
+    rangeText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+    rangeTextActive: { color: colors.primary },
 
-  statsSection: { paddingHorizontal: 20, marginBottom: 24 },
-  statsTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, marginBottom: 14 },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 16,
-  },
-  statItem: {
-    width: '48%',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: 14,
-  },
-  statLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 4, fontWeight: '600' },
-  statValue: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+    statsSection: { paddingHorizontal: 20, marginBottom: 24 },
+    statsTitle: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, marginBottom: 14 },
+    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+    statItem: {
+      width: '48%',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      padding: 14,
+    },
+    statLabel: { fontSize: 11, color: colors.textMuted, marginBottom: 4, fontWeight: '600' },
+    statValue: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
 
-  rsiCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: 16,
-    marginBottom: 12,
-  },
-  rsiRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  rsiLabel: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
-  rsiBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
-  rsiBadgeText: { fontSize: 10, fontWeight: '700' },
-  rsiValue: { fontSize: 28, fontWeight: '800', marginBottom: 12 },
-  rsiBar: { height: 6, borderRadius: 3, overflow: 'hidden', position: 'relative', marginBottom: 6 },
-  rsiBarBg: { ...StyleSheet.absoluteFillObject, backgroundColor: Colors.border, borderRadius: 3 },
-  rsiBarFill: { height: 6, borderRadius: 3 },
-  rsiMark: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: 'rgba(255,255,255,0.8)',
-  },
-  rsiBarLabels: { flexDirection: 'row', justifyContent: 'space-between' },
-  rsiBarLabel: { fontSize: 10, color: Colors.textMuted },
+    rsiCard: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      padding: 16,
+      marginBottom: 12,
+    },
+    rsiRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    rsiLabel: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+    rsiBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
+    rsiBadgeText: { fontSize: 10, fontWeight: '700' },
+    rsiValue: { fontSize: 28, fontWeight: '800', marginBottom: 12 },
+    rsiBar: {
+      height: 6,
+      borderRadius: 3,
+      overflow: 'hidden',
+      position: 'relative',
+      marginBottom: 6,
+    },
+    rsiBarBg: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.border, borderRadius: 3 },
+    rsiBarFill: { height: 6, borderRadius: 3 },
+    rsiMark: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      width: 2,
+      backgroundColor: 'rgba(255,255,255,0.8)',
+    },
+    rsiBarLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+    rsiBarLabel: { fontSize: 10, color: colors.textMuted },
 
-  week52Card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: 16,
-  },
-  week52Title: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary, marginBottom: 10 },
-  week52Row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  week52Val: { fontSize: 15, fontWeight: '700' },
-  week52BarBg: {
-    height: 6,
-    backgroundColor: Colors.border,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 6,
-  },
-  week52BarFill: {
-    height: 6,
-    backgroundColor: Colors.primary,
-    borderRadius: 3,
-  },
-  week52SubRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  week52Sub: { fontSize: 10, fontWeight: '600', color: Colors.textMuted },
-  week52Current: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
+    week52Card: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      padding: 16,
+    },
+    week52Title: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginBottom: 10 },
+    week52Row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    week52Val: { fontSize: 15, fontWeight: '700' },
+    week52BarBg: {
+      height: 6,
+      backgroundColor: colors.border,
+      borderRadius: 3,
+      overflow: 'hidden',
+      marginBottom: 6,
+    },
+    week52BarFill: { height: 6, backgroundColor: colors.primary, borderRadius: 3 },
+    week52SubRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    week52Sub: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
+    week52Current: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
 
-  ctaSection: { paddingHorizontal: 20, paddingBottom: 32 },
-  ctaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingVertical: 16,
-  },
-  ctaBtnActive: { backgroundColor: Colors.surface, borderWidth: 2, borderColor: Colors.primary },
-  ctaBtnText: { fontSize: 16, fontWeight: '700', color: Colors.dark },
-});
+    ctaSection: { paddingHorizontal: 20, paddingBottom: 32 },
+    ctaBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: colors.primary,
+      borderRadius: Radius.full,
+      paddingVertical: 16,
+    },
+    ctaBtnActive: {
+      backgroundColor: colors.surface,
+      borderWidth: 2,
+      borderColor: colors.primary,
+    },
+    ctaBtnText: { fontSize: 16, fontWeight: '700', color: colors.onPrimary },
+  });
+}

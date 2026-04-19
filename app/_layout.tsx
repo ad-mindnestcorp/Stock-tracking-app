@@ -2,10 +2,14 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
+import Toast from 'react-native-toast-message';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { AuthProvider } from '@/context/auth';
+import { ThemeProvider, useTheme } from '@/context/theme-context';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { queryClient } from '@/lib/query-client';
 
 function useOAuthDeepLink() {
   useEffect(() => {
@@ -34,8 +38,6 @@ function useOAuthDeepLink() {
     };
 
     const subscription = Linking.addEventListener('url', handleUrl);
-
-    // Handle the case where the app was opened via deep link (cold start)
     Linking.getInitialURL().then((url) => {
       if (url) handleUrl({ url });
     });
@@ -46,6 +48,7 @@ function useOAuthDeepLink() {
 
 function RootLayout() {
   useOAuthDeepLink();
+  const { isDark } = useTheme();
 
   return (
     <>
@@ -54,13 +57,11 @@ function RootLayout() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen
           name="stock/[symbol]"
-          options={{
-            headerShown: false,
-            presentation: 'card',
-          }}
+          options={{ headerShown: false, presentation: 'card' }}
         />
       </Stack>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Toast />
     </>
   );
 }
@@ -72,9 +73,13 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <RootLayout />
-      </AuthProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <RootLayout />
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
