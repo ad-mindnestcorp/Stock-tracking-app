@@ -47,7 +47,7 @@ export default function StockDetailScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel={`Loading ${symbol}`} />
         <Text style={styles.loadingText}>Loading {symbol}...</Text>
       </SafeAreaView>
     );
@@ -60,7 +60,7 @@ export default function StockDetailScreen() {
         <Text style={styles.errorText}>
           {error instanceof Error ? error.message : 'Stock not found'}
         </Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={styles.backBtnText}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -94,15 +94,27 @@ export default function StockDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Nav bar */}
         <View style={styles.nav}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.navBtn}>
-            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.navBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} accessibilityElementsHidden />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity style={styles.navBtn} onPress={handleWatchlistToggle}>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={handleWatchlistToggle}
+            accessibilityRole="button"
+            accessibilityLabel={inWatchlist ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
+            accessibilityState={{ checked: inWatchlist }}
+          >
             <Ionicons
               name={inWatchlist ? 'star' : 'star-outline'}
               size={22}
               color={inWatchlist ? colors.primary : colors.textPrimary}
+              accessibilityElementsHidden
             />
           </TouchableOpacity>
         </View>
@@ -157,6 +169,9 @@ export default function StockDetailScreen() {
                 key={r}
                 style={[styles.rangeBtn, selectedRange === r && styles.rangeBtnActive]}
                 onPress={() => setSelectedRange(r)}
+                accessibilityRole="tab"
+                accessibilityLabel={`${r} chart range`}
+                accessibilityState={{ selected: selectedRange === r }}
               >
                 <Text style={[styles.rangeText, selectedRange === r && styles.rangeTextActive]}>
                   {r}

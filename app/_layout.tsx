@@ -10,6 +10,14 @@ import { AuthProvider } from '@/context/auth';
 import { ThemeProvider, useTheme } from '@/context/theme-context';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { queryClient } from '@/lib/query-client';
+import { initSentry, Sentry } from '@/lib/sentry';
+import { initI18n } from '@/lib/i18n';
+import { initAnalytics } from '@/lib/analytics';
+
+// Initialise once before the component tree mounts
+initSentry();
+initI18n();
+initAnalytics().catch(console.error);
 
 function useOAuthDeepLink() {
   useEffect(() => {
@@ -67,7 +75,7 @@ function RootLayout() {
   );
 }
 
-export default function App() {
+function App() {
   useEffect(() => {
     registerForPushNotifications().catch(console.error);
   }, []);
@@ -84,3 +92,6 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+// Wrap the root with Sentry's error boundary so crashes are reported automatically
+export default Sentry.wrap(App);

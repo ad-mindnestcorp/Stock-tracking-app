@@ -57,7 +57,7 @@ export default function WatchlistScreen() {
       </View>
 
       {/* Add stock input */}
-      <View style={styles.addRow}>
+      <View style={styles.addRow} accessibilityRole="search">
         <TextInput
           style={styles.input}
           placeholder="Add symbol (e.g. AAPL)"
@@ -67,13 +67,18 @@ export default function WatchlistScreen() {
           autoCapitalize="characters"
           onSubmitEditing={handleAdd}
           returnKeyType="done"
+          accessibilityLabel="Stock symbol input"
+          accessibilityHint="Type a stock symbol to add to your watchlist"
         />
         <TouchableOpacity
           style={[styles.addBtn, (!addSymbol.trim() || adding) && styles.addBtnDisabled]}
           onPress={handleAdd}
           disabled={!addSymbol.trim() || adding}
+          accessibilityRole="button"
+          accessibilityLabel={adding ? 'Adding stock…' : 'Add stock to watchlist'}
+          accessibilityState={{ disabled: !addSymbol.trim() || adding }}
         >
-          <Ionicons name="add" size={22} color={colors.onPrimary} />
+          <Ionicons name="add" size={22} color={colors.onPrimary} accessibilityElementsHidden />
         </TouchableOpacity>
       </View>
 

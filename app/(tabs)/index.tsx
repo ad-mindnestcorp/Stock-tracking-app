@@ -64,8 +64,14 @@ export default function HomeScreen() {
         </View>
 
         {/* Search Bar */}
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={18} color={colors.textMuted} style={styles.searchIcon} />
+        <View style={styles.searchWrap} accessibilityRole="search">
+          <Ionicons
+            name="search"
+            size={18}
+            color={colors.textMuted}
+            style={styles.searchIcon}
+            accessibilityElementsHidden
+          />
           <TextInput
             style={styles.searchInput}
             placeholder="Search symbol (e.g. AAPL)"
@@ -75,15 +81,17 @@ export default function HomeScreen() {
             onSubmitEditing={handleSearch}
             autoCapitalize="characters"
             returnKeyType="search"
+            accessibilityLabel="Stock symbol search"
+            accessibilityHint="Type a stock symbol and press search"
           />
         </View>
 
         {isError && (
-          <View style={styles.errorCard}>
+          <View style={styles.errorCard} accessibilityRole="alert">
             <Text style={styles.errorText}>
               {error instanceof Error ? error.message : 'Failed to load market data'}
             </Text>
-            <TouchableOpacity onPress={() => refetch()}>
+            <TouchableOpacity onPress={() => refetch()} accessibilityRole="button" accessibilityLabel="Retry loading market data">
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -106,6 +114,9 @@ export default function HomeScreen() {
                   key={tab.key}
                   style={[styles.tab, activeTab === tab.key && styles.tabActive]}
                   onPress={() => setActiveTab(tab.key)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={tab.label}
+                  accessibilityState={{ selected: activeTab === tab.key }}
                 >
                   <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
                     {tab.label}

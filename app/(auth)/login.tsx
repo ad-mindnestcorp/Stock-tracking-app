@@ -90,6 +90,8 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="next"
+                accessibilityLabel="Email address"
+                accessibilityHint="Enter your email address"
               />
               {errors.email && (
                 <Text style={styles.fieldError}>{errors.email.message}</Text>
@@ -115,16 +117,21 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 returnKeyType="done"
                 onSubmitEditing={handleSubmit(onLogin)}
+                accessibilityLabel="Password"
+                accessibilityHint="Enter your password"
               />
               <TouchableOpacity
                 style={styles.eyeBtn}
                 onPress={() => setShowPassword((v) => !v)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
               >
                 <Ionicons
                   name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                   size={20}
                   color={colors.textMuted}
+                  accessibilityElementsHidden
                 />
               </TouchableOpacity>
               {errors.password && (
@@ -135,7 +142,12 @@ export default function LoginScreen() {
         />
 
         {/* Forgot password */}
-        <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
+        <TouchableOpacity
+          style={styles.forgotBtn}
+          onPress={handleForgotPassword}
+          accessibilityRole="link"
+          accessibilityLabel="Forgot password"
+        >
           <Text style={styles.forgotText}>Forgot Password?</Text>
         </TouchableOpacity>
 
@@ -145,9 +157,12 @@ export default function LoginScreen() {
           onPress={handleSubmit(onLogin)}
           disabled={loading}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={loading ? 'Signing in…' : 'Sign in'}
+          accessibilityState={{ disabled: loading, busy: loading }}
         >
           {loading ? (
-            <ActivityIndicator color={colors.onPrimary} />
+            <ActivityIndicator color={colors.onPrimary} accessibilityElementsHidden />
           ) : (
             <Text style={styles.primaryBtnText}>Login</Text>
           )}
@@ -159,6 +174,8 @@ export default function LoginScreen() {
           style={styles.outlineBtn}
           onPress={() => router.push('/(auth)/signup')}
           activeOpacity={0.85}
+          accessibilityRole="link"
+          accessibilityLabel="Go to registration"
         >
           <Text style={styles.outlineBtnText}>Registration</Text>
         </TouchableOpacity>

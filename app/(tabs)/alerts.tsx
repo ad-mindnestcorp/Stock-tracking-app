@@ -36,7 +36,12 @@ export default function AlertsScreen() {
           )}
         </View>
         {unreadCount > 0 && (
-          <TouchableOpacity style={styles.markAllBtn} onPress={() => markAllRead()}>
+          <TouchableOpacity
+            style={styles.markAllBtn}
+            onPress={() => markAllRead()}
+            accessibilityRole="button"
+            accessibilityLabel={`Mark all ${unreadCount} alerts as read`}
+          >
             <Text style={styles.markAllText}>Mark all read</Text>
           </TouchableOpacity>
         )}
@@ -62,7 +67,7 @@ export default function AlertsScreen() {
           <Text style={styles.errorText}>
             {error instanceof Error ? error.message : 'Failed to load alerts'}
           </Text>
-          <TouchableOpacity onPress={() => refetch()}>
+          <TouchableOpacity onPress={() => refetch()} accessibilityRole="button" accessibilityLabel="Retry loading alerts">
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>

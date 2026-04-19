@@ -1,0 +1,94 @@
+{
+  "common": {
+    "retry": "Retry",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "back": "Back",
+    "done": "Done"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "signOut": "Sign Out",
+    "signInWithGoogle": "Continue with Google",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot Password?",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?",
+    "resetPassword": "Reset Password",
+    "resetSent": "Check your email for a reset link."
+  },
+  "home": {
+    "title": "Stockvest",
+    "marketOverview": "Market Overview",
+    "advancing": "Advancing",
+    "declining": "Declining",
+    "tracked": "Tracked",
+    "searchPlaceholder": "Search symbol (e.g. AAPL)",
+    "tabs": {
+      "trending": "Trending",
+      "topGainer": "Top Gainer",
+      "topLoser": "Top Loser",
+      "mostActive": "Most Active"
+    }
+  },
+  "watchlist": {
+    "title": "Watchlist",
+    "empty": "Your watchlist is empty",
+    "emptySubtitle": "Search for a stock and tap Add to Watchlist",
+    "addStock": "Add Stock",
+    "symbolPlaceholder": "Enter symbol (e.g. AAPL)",
+    "add": "Add",
+    "removeConfirm": "Remove {{symbol}} from your watchlist?",
+    "swipeToDelete": "Swipe left to remove"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "empty": "No alerts yet",
+    "emptySubtitle": "Alerts appear when your stocks hit key signals",
+    "markRead": "Mark as read",
+    "markAllRead": "Mark all read",
+    "types": {
+      "rsi_overbought": "RSI Overbought",
+      "rsi_oversold": "RSI Oversold",
+      "52w_high": "52-Week High",
+      "52w_low": "52-Week Low"
+    }
+  },
+  "stockDetail": {
+    "addToWatchlist": "Add to Watchlist",
+    "removeFromWatchlist": "Remove from Watchlist",
+    "price": "Price",
+    "change": "Change",
+    "high52w": "52W High",
+    "low52w": "52W Low",
+    "rsi": "RSI (14)",
+    "volume": "Volume",
+    "timeRanges": {
+      "1W": "1W",
+      "1M": "1M",
+      "3M": "3M",
+      "6M": "6M",
+      "1Y": "1Y"
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "account": "Account",
+    "appearance": "Appearance",
+    "darkMode": "Dark Mode",
+    "notifications": "Notifications",
+    "signOut": "Sign Out",
+    "version": "Version"
+  },
+  "transactions": {
+    "title": "Alert History",
+    "empty": "No alert history",
+    "emptySubtitle": "Triggered alerts will appear here"
+  }
+}

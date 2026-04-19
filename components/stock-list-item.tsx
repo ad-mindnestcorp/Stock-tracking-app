@@ -38,13 +38,21 @@ export default function StockListItem({ item, showCard = false }: StockListItemP
   const isPositive = (quote?.changePercent ?? 0) >= 0;
   const changeColor = isPositive ? colors.positive : colors.negative;
 
+  const changeStr = quote
+    ? `${isPositive ? 'up' : 'down'} ${Math.abs(quote.changePercent ?? 0).toFixed(2)} percent`
+    : 'no data';
+  const priceStr = quote ? `$${quote.currentPrice.toFixed(2)}` : '';
+
   return (
     <TouchableOpacity
       style={[styles.row, showCard && styles.card]}
       onPress={() => router.push(`/stock/${symbol}`)}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${companyName}, ${symbol}, ${priceStr}, ${changeStr}`}
+      accessibilityHint="Opens stock detail page"
     >
-      <View style={styles.logo}>
+      <View style={styles.logo} accessibilityElementsHidden>
         <Text style={styles.logoText}>{symbol.slice(0, 2)}</Text>
       </View>
 

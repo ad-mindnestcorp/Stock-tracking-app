@@ -32,11 +32,18 @@ export default function AlertItem({ alert, onMarkRead }: AlertItemProps) {
 
   const timeAgo = formatTimeAgo(alert.triggered_at);
 
+  const a11yLabel = `${config.label} alert for ${alert.symbol}. ${alert.message}. ${alert.is_read ? 'Read' : 'Unread'}`;
+  const a11yHint = alert.is_read ? undefined : 'Tap to mark as read';
+
   return (
     <TouchableOpacity
       style={[styles.card, !alert.is_read && styles.unread]}
       onPress={() => !alert.is_read && onMarkRead?.(alert.id)}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint={a11yHint}
+      accessibilityState={{ checked: alert.is_read }}
     >
       {!alert.is_read && <View style={styles.unreadDot} />}
 
