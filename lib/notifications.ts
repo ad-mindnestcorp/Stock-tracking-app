@@ -37,7 +37,15 @@ export async function registerForPushNotifications(): Promise<string | null> {
     await pushApi.register(token);
     return token;
   } catch (err) {
-    console.error('Failed to get/register push token:', err);
+    // Network errors are expected in simulators and dev builds without internet.
+    // Log a warning instead of an error so it doesn't look like a crash.
+    const message = err instanceof Error ? err.message : String(err);
+    const isNetworkError = message.includes('Network request failed');
+    if (__DEV__ && isNetworkError) {
+      console.warn('[Push] Skipped push token registration (simulator or no network)');
+    } else {
+      console.error('Failed to get/register push token:', err);
+    }
     return null;
   }
 }

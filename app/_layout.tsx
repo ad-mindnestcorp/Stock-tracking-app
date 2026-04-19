@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { AuthProvider } from '@/context/auth';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 function useOAuthDeepLink() {
   useEffect(() => {
@@ -70,8 +71,10 @@ export default function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <RootLayout />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <RootLayout />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
