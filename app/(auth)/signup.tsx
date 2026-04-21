@@ -43,15 +43,24 @@ export default function SignupScreen() {
 
   const onSignup = async (data: SignupFormValues) => {
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const redirectUrl = Linking.createURL('auth/callback');
+
+    const { data: authData, error } = await supabase.auth.signUp({
       email: data.email.trim().toLowerCase(),
       password: data.password,
+      options: { emailRedirectTo: redirectUrl },
     });
     setLoading(false);
 
     if (error) {
       toast.error(error.message, 'Sign up failed');
+    } else if (authData.session) {
+      // Email confirmation is disabled in Supabase — user is immediately signed in.
+      // onAuthStateChange in AuthProvider will update session and layout guards
+      // will redirect to /(tabs) automatically.
+      toast.success('Welcome! Your account has been created.', 'Account created');
     } else {
+      // Email confirmation is enabled — user must verify before logging in.
       router.replace('/(auth)/login');
       toast.success('A confirmation link has been sent — please verify before logging in.', 'Check your inbox');
     }

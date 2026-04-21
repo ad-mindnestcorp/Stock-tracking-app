@@ -24,7 +24,21 @@ function useOAuthDeepLink() {
     const handleUrl = ({ url }: { url: string }) => {
       if (!url.includes('auth/callback')) return;
 
-      // PKCE: extract ?code= from query params
+      // Email confirmation (type=signup) and password recovery (type=recovery):
+      // Supabase sends token_hash + type in the link query params.
+      const tokenHashMatch = url.match(/[?&]token_hash=([^&]+)/);
+      const typeMatch = url.match(/[?&]type=([^&#]+)/);
+      if (tokenHashMatch?.[1] && typeMatch?.[1]) {
+        supabase.auth
+          .verifyOtp({
+            token_hash: decodeURIComponent(tokenHashMatch[1]),
+            type: decodeURIComponent(typeMatch[1]) as 'signup' | 'recovery' | 'email' | 'invite' | 'magiclink' | 'email_change',
+          })
+          .catch(console.error);
+        return;
+      }
+
+      // PKCE: extract ?code= from query params (used by Google OAuth and some email flows)
       const codeMatch = url.match(/[?&]code=([^&]+)/);
       if (codeMatch?.[1]) {
         supabase.auth
