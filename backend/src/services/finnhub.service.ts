@@ -100,26 +100,30 @@ export async function getDailyCandles(symbol: string, days = 365): Promise<Candl
   const cached = getCached<CandleData>(key);
   if (cached) return cached;
 
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - days * 24 * 60 * 60;
+  try {
+    const to = Math.floor(Date.now() / 1000);
+    const from = to - days * 24 * 60 * 60;
 
-  const res = await axios.get(`${BASE_URL}/stock/candle`, {
-    params: { symbol, resolution: 'D', from, to, token: API_KEY },
-    timeout: 10000,
-  });
+    const res = await axios.get(`${BASE_URL}/stock/candle`, {
+      params: { symbol, resolution: 'D', from, to, token: API_KEY },
+      timeout: 10000,
+    });
 
-  if (res.data.s !== 'ok') return null;
+    if (res.data?.s !== 'ok') return null;
 
-  const candles: CandleData = {
-    timestamps: res.data.t,
-    open: res.data.o,
-    high: res.data.h,
-    low: res.data.l,
-    close: res.data.c,
-    volume: res.data.v,
-  };
-  setCached(key, candles, TTL.CANDLES_DAILY);
-  return candles;
+    const candles: CandleData = {
+      timestamps: res.data.t,
+      open: res.data.o,
+      high: res.data.h,
+      low: res.data.l,
+      close: res.data.c,
+      volume: res.data.v,
+    };
+    setCached(key, candles, TTL.CANDLES_DAILY);
+    return candles;
+  } catch {
+    return null;
+  }
 }
 
 /** Fetch intraday candles for 1D chart (5-min resolution, cached 5 min) */
@@ -128,26 +132,30 @@ export async function getIntradayCandles(symbol: string): Promise<CandleData | n
   const cached = getCached<CandleData>(key);
   if (cached) return cached;
 
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - 24 * 60 * 60;
+  try {
+    const to = Math.floor(Date.now() / 1000);
+    const from = to - 24 * 60 * 60;
 
-  const res = await axios.get(`${BASE_URL}/stock/candle`, {
-    params: { symbol, resolution: '5', from, to, token: API_KEY },
-    timeout: 10000,
-  });
+    const res = await axios.get(`${BASE_URL}/stock/candle`, {
+      params: { symbol, resolution: '5', from, to, token: API_KEY },
+      timeout: 10000,
+    });
 
-  if (res.data.s !== 'ok') return null;
+    if (res.data?.s !== 'ok') return null;
 
-  const candles: CandleData = {
-    timestamps: res.data.t,
-    open: res.data.o,
-    high: res.data.h,
-    low: res.data.l,
-    close: res.data.c,
-    volume: res.data.v,
-  };
-  setCached(key, candles, TTL.CANDLES_INTRADAY);
-  return candles;
+    const candles: CandleData = {
+      timestamps: res.data.t,
+      open: res.data.o,
+      high: res.data.h,
+      low: res.data.l,
+      close: res.data.c,
+      volume: res.data.v,
+    };
+    setCached(key, candles, TTL.CANDLES_INTRADAY);
+    return candles;
+  } catch {
+    return null;
+  }
 }
 
 /** Fetch company profile (cached 24 h) */
@@ -227,6 +235,36 @@ export async function getBatchQuotes(
     }
   }
   return result;
+}
+
+export interface SymbolSearchResult {
+  symbol: string;
+  description: string;
+  type: string;
+}
+
+/** Search for stock symbols matching a query (cached 30 s) */
+export async function searchSymbols(query: string): Promise<SymbolSearchResult[]> {
+  const key = `search:${query.toLowerCase()}`;
+  const cached = getCached<SymbolSearchResult[]>(key);
+  if (cached) return cached;
+
+  const res = await axios.get(`${BASE_URL}/search`, {
+    params: { q: query, token: API_KEY },
+    timeout: 8000,
+  });
+
+  const results: SymbolSearchResult[] = (res.data.result ?? [])
+    .filter((r: { type: string }) => r.type === 'Common Stock' || r.type === 'EQS')
+    .slice(0, 10)
+    .map((r: { symbol: string; description: string; type: string }) => ({
+      symbol: r.symbol,
+      description: r.description,
+      type: r.type,
+    }));
+
+  setCached(key, results, 30_000);
+  return results;
 }
 
 /** Popular US stocks used for the Home screen trending/gainers/losers list */

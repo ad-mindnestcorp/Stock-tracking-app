@@ -12,8 +12,9 @@ export function useWatchlist() {
 export function useAddStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (symbol: string) => watchlistApi.add(symbol),
-    onSuccess: (_, symbol) => {
+    mutationFn: ({ symbol, company_name }: { symbol: string; company_name?: string }) =>
+      watchlistApi.add(symbol, company_name),
+    onSuccess: (_, { symbol }) => {
       qc.invalidateQueries({ queryKey: ['watchlist'] });
       toast.success(`${symbol} added to your watchlist`, 'Added');
     },

@@ -8,12 +8,15 @@ import {
   RefreshControl,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useWatchlist, useAddStock, useRemoveStock } from '@/hooks/use-watchlist';
-import { type WatchlistStock } from '@/lib/api';
+import { watchlistApi, type WatchlistStock, type StockSearchResult } from '@/lib/api';
 import { useTheme } from '@/context/theme-context';
 import { Radius } from '@/constants/theme';
 import { SkeletonListScreen } from '@/components/skeleton';
@@ -21,17 +24,10 @@ import { SkeletonListScreen } from '@/components/skeleton';
 export default function WatchlistScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [addSymbol, setAddSymbol] = useState('');
 
   const { data: stocks = [], isLoading, isError, error, refetch, isRefetching } = useWatchlist();
-  const { mutate: addStock, isPending: adding } = useAddStock();
+  const { mutate: addStock } = useAddStock();
   const { mutate: removeStock } = useRemoveStock();
-
-  const handleAdd = () => {
-    const sym = addSymbol.trim().toUpperCase();
-    if (!sym) return;
-    addStock(sym, { onSuccess: () => setAddSymbol('') });
-  };
 
   const handleDelete = (symbol: string) => {
     Alert.alert(
@@ -56,31 +52,13 @@ export default function WatchlistScreen() {
         <Text style={styles.subtitle}>{stocks.length} stock{stocks.length !== 1 ? 's' : ''} monitored</Text>
       </View>
 
-      {/* Add stock input */}
-      <View style={styles.addRow} accessibilityRole="search">
-        <TextInput
-          style={styles.input}
-          placeholder="Add symbol (e.g. AAPL)"
-          placeholderTextColor={colors.textMuted}
-          value={addSymbol}
-          onChangeText={setAddSymbol}
-          autoCapitalize="characters"
-          onSubmitEditing={handleAdd}
-          returnKeyType="done"
-          accessibilityLabel="Stock symbol input"
-          accessibilityHint="Type a stock symbol to add to your watchlist"
-        />
-        <TouchableOpacity
-          style={[styles.addBtn, (!addSymbol.trim() || adding) && styles.addBtnDisabled]}
-          onPress={handleAdd}
-          disabled={!addSymbol.trim() || adding}
-          accessibilityRole="button"
-          accessibilityLabel={adding ? 'Adding stock…' : 'Add stock to watchlist'}
-          accessibilityState={{ disabled: !addSymbol.trim() || adding }}
-        >
-          <Ionicons name="add" size={22} color={colors.onPrimary} accessibilityElementsHidden />
-        </TouchableOpacity>
-      </View>
+      {/* Search + add input */}
+      <StockSearchInput
+        watchedSymbols={stocks.map((s) => s.symbol)}
+        onAdd={(symbol, company_name) => addStock({ symbol, company_name })}
+        colors={colors}
+        styles={styles}
+      />
 
       {isError && (
         <View style={styles.errorCard}>
@@ -117,6 +95,141 @@ export default function WatchlistScreen() {
         />
       )}
     </SafeAreaView>
+  );
+}
+
+function StockSearchInput({
+  watchedSymbols,
+  onAdd,
+  colors,
+  styles,
+}: {
+  watchedSymbols: string[];
+  onAdd: (symbol: string, company_name: string) => void;
+  colors: ReturnType<typeof useTheme>['colors'];
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) {
+      setDebouncedQuery('');
+      setOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setOpen(true);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  const { data: results = [], isFetching } = useQuery({
+    queryKey: ['stockSearch', debouncedQuery],
+    queryFn: () => watchlistApi.search(debouncedQuery),
+    enabled: debouncedQuery.length >= 1,
+    staleTime: 30_000,
+  });
+
+  const handleSelect = (item: StockSearchResult) => {
+    onAdd(item.symbol, item.description);
+    setQuery('');
+    setDebouncedQuery('');
+    setOpen(false);
+  };
+
+  const showDropdown = open && debouncedQuery.length >= 1;
+
+  return (
+    <View style={styles.searchContainer}>
+      <View style={styles.addRow} accessibilityRole="search">
+        <Ionicons
+          name="search"
+          size={18}
+          color={colors.textMuted}
+          style={styles.searchIcon}
+          accessibilityElementsHidden
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Search symbol or company…"
+          placeholderTextColor={colors.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="characters"
+          returnKeyType="search"
+          accessibilityLabel="Stock search input"
+          accessibilityHint="Type a symbol or company name to find and add stocks"
+        />
+        {isFetching && (
+          <ActivityIndicator size="small" color={colors.primary} style={styles.searchSpinner} />
+        )}
+        {query.length > 0 && !isFetching && (
+          <TouchableOpacity
+            onPress={() => {
+              setQuery('');
+              setDebouncedQuery('');
+              setOpen(false);
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Clear search"
+          >
+            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {showDropdown && (
+        <View style={[styles.dropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {results.length === 0 && !isFetching ? (
+            <Text style={styles.dropdownEmpty}>No results for "{debouncedQuery}"</Text>
+          ) : (
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              style={{ maxHeight: 220 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {results.map((item) => {
+                const alreadyAdded = watchedSymbols.includes(item.symbol);
+                return (
+                  <TouchableOpacity
+                    key={item.symbol}
+                    style={[styles.dropdownRow, alreadyAdded && styles.dropdownRowDisabled]}
+                    onPress={() => !alreadyAdded && handleSelect(item)}
+                    disabled={alreadyAdded}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      alreadyAdded
+                        ? `${item.symbol} already in watchlist`
+                        : `Add ${item.symbol} to watchlist`
+                    }
+                    accessibilityState={{ disabled: alreadyAdded }}
+                  >
+                    <View style={styles.dropdownInfo}>
+                      <Text style={styles.dropdownSymbol}>{item.symbol}</Text>
+                      <Text style={styles.dropdownName} numberOfLines={1}>
+                        {item.description}
+                      </Text>
+                    </View>
+                    {alreadyAdded ? (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.positive} />
+                    ) : (
+                      <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -185,31 +298,53 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     title: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
     subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
 
+    searchContainer: {
+      paddingHorizontal: 20,
+      paddingVertical: 8,
+      zIndex: 10,
+    },
     addRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      gap: 10,
-    },
-    input: {
-      flex: 1,
       backgroundColor: colors.surface,
       borderRadius: Radius.full,
-      paddingHorizontal: 18,
-      paddingVertical: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      gap: 8,
+    },
+    searchIcon: { marginRight: 2 },
+    searchSpinner: { marginLeft: 4 },
+    input: {
+      flex: 1,
       fontSize: 14,
       color: colors.textPrimary,
+      paddingVertical: 2,
     },
-    addBtn: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
-      backgroundColor: colors.primary,
+    dropdown: {
+      marginTop: 6,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      overflow: 'hidden',
+    },
+    dropdownEmpty: {
+      padding: 16,
+      fontSize: 13,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    dropdownRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: 12,
     },
-    addBtnDisabled: { opacity: 0.5 },
+    dropdownRowDisabled: { opacity: 0.5 },
+    dropdownInfo: { flex: 1 },
+    dropdownSymbol: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+    dropdownName: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
 
     errorCard: {
       marginHorizontal: 20,

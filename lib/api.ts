@@ -117,20 +117,34 @@ export interface HomeData {
   mostActive: StockQuote[];
 }
 
+export interface StockSearchResult {
+  symbol: string;
+  description: string;
+  type: string;
+}
+
 // ─── Market ──────────────────────────────────────────────────────────────────
+
+function marketSymbolPath(symbol: string): string {
+  return encodeURIComponent(symbol.trim().toUpperCase());
+}
 
 export const marketApi = {
   getHome: () => request<HomeData>('/api/market/home'),
-  getQuote: (symbol: string) => request<StockQuote>(`/api/market/quote/${symbol}`),
-  getDetail: (symbol: string) => request<StockDetail>(`/api/market/detail/${symbol}`),
+  getQuote: (symbol: string) =>
+    request<StockQuote>(`/api/market/quote/${marketSymbolPath(symbol)}`),
+  getDetail: (symbol: string) =>
+    request<StockDetail>(`/api/market/detail/${marketSymbolPath(symbol)}`),
   getCandles: (symbol: string, range: '1D' | '1W' | '1M' | '3M' | '6M' | '1Y') =>
-    request<CandleData>(`/api/market/candles/${symbol}?range=${range}`),
+    request<CandleData>(`/api/market/candles/${marketSymbolPath(symbol)}?range=${range}`),
 };
 
 // ─── Watchlist ────────────────────────────────────────────────────────────────
 
 export const watchlistApi = {
   getAll: () => request<WatchlistStock[]>('/api/stocks'),
+  search: (query: string) =>
+    request<StockSearchResult[]>(`/api/stocks/search?q=${encodeURIComponent(query)}`),
   add: (symbol: string, company_name?: string) =>
     request<WatchlistStock>('/api/stocks', {
       method: 'POST',

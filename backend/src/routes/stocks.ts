@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { getQuote } from '../services/finnhub.service';
+import { getQuote, searchSymbols } from '../services/finnhub.service';
 
 const router = Router();
 
@@ -8,6 +8,21 @@ const router = Router();
 function getUserId(req: Request): string {
   return (req.headers['x-user-id'] as string) || process.env.DEV_USER_ID || 'dev-user';
 }
+
+/** GET /api/stocks/search?q= — search for stock symbols via Finnhub */
+router.get('/search', async (req: Request, res: Response) => {
+  const q = (req.query.q as string | undefined)?.trim();
+  if (!q || q.length < 1) {
+    return res.status(400).json({ error: 'query param "q" is required' });
+  }
+
+  try {
+    const results = await searchSymbols(q);
+    return res.json(results);
+  } catch {
+    return res.status(500).json({ error: 'Symbol search failed' });
+  }
+});
 
 /** GET /api/stocks — list user's watchlist with live quotes */
 router.get('/', async (req: Request, res: Response) => {

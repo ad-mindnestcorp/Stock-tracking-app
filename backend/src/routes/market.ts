@@ -12,9 +12,13 @@ import { calculateRSI } from '../services/rsi.service';
 
 const router = Router();
 
+function normalizeSymbolParam(raw: string): string {
+  return decodeURIComponent(raw).trim().toUpperCase();
+}
+
 /** GET /api/market/quote/:symbol — single stock quote */
 router.get('/quote/:symbol', async (req: Request, res: Response) => {
-  const symbol = req.params.symbol.toUpperCase();
+  const symbol = normalizeSymbolParam(req.params.symbol);
   try {
     const [quote, profile] = await Promise.all([
       getQuote(symbol),
@@ -28,10 +32,10 @@ router.get('/quote/:symbol', async (req: Request, res: Response) => {
 
 /** GET /api/market/detail/:symbol — full stock detail (quote + profile + RSI + 52W) */
 router.get('/detail/:symbol', async (req: Request, res: Response) => {
-  const symbol = req.params.symbol.toUpperCase();
+  const symbol = normalizeSymbolParam(req.params.symbol);
   try {
-    const [quote, profile, week52] = await Promise.all([
-      getQuote(symbol),
+    const quote = await getQuote(symbol);
+    const [profile, week52] = await Promise.all([
       getCompanyProfile(symbol),
       getWeek52Data(symbol),
     ]);
@@ -48,13 +52,14 @@ router.get('/detail/:symbol', async (req: Request, res: Response) => {
       isOversold: rsiResult?.isOversold ?? false,
     });
   } catch (err) {
+    console.error(`Detail fetch failed for ${symbol}:`, err);
     return res.status(500).json({ error: `Failed to fetch detail for ${symbol}` });
   }
 });
 
 /** GET /api/market/candles/:symbol?range=1D|1W|1M|3M|6M|1Y */
 router.get('/candles/:symbol', async (req: Request, res: Response) => {
-  const symbol = req.params.symbol.toUpperCase();
+  const symbol = normalizeSymbolParam(req.params.symbol);
   const range = (req.query.range as string) || '1M';
 
   try {

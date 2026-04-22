@@ -19,15 +19,21 @@ import LineChart from '@/components/line-chart';
 
 const RANGES: CandleRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y'];
 
+function normalizeSymbolParam(raw: string | string[] | undefined): string {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  return (s ?? '').trim().toUpperCase();
+}
+
 export default function StockDetailScreen() {
-  const { symbol } = useLocalSearchParams<{ symbol: string }>();
+  const { symbol: rawSymbol } = useLocalSearchParams<{ symbol: string | string[] }>();
+  const symbol = useMemo(() => normalizeSymbolParam(rawSymbol), [rawSymbol]);
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [selectedRange, setSelectedRange] = useState<CandleRange>('1M');
 
-  const { data: detail, isLoading, isError, error } = useStockDetail(symbol ?? '');
-  const { data: candles, isLoading: candleLoading } = useCandles(symbol ?? '', selectedRange);
+  const { data: detail, isLoading, isError, error } = useStockDetail(symbol);
+  const { data: candles, isLoading: candleLoading } = useCandles(symbol, selectedRange);
   const { data: watchlist = [] } = useWatchlist();
   const { mutate: addStock } = useAddStock();
   const { mutate: removeStock } = useRemoveStock();
@@ -40,9 +46,21 @@ export default function StockDetailScreen() {
     if (inWatchlist) {
       removeStock(symbol);
     } else {
-      addStock(symbol);
+      addStock({ symbol });
     }
   };
+
+  if (!symbol) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <Ionicons name="alert-circle-outline" size={48} color={colors.negative} />
+        <Text style={styles.errorText}>Invalid stock symbol</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+          <Text style={styles.backBtnText}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   if (isLoading) {
     return (
