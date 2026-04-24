@@ -16,15 +16,13 @@ export interface RSIResult {
 export function calculateRSI(closes: number[], period = 14): RSIResult | null {
   if (closes.length < period + 1) return null;
 
-  // Use only the most recent (period + 1) prices for efficiency
-  const prices = closes.slice(-period - 1);
-  const changes = prices.slice(1).map((p, i) => p - prices[i]);
+  const changes = closes.slice(1).map((p, i) => p - closes[i]);
 
-  // Initial averages (simple average for first period)
+  // Seed with simple average of the first period's gains/losses
   let avgGain = changes.slice(0, period).filter((c) => c > 0).reduce((a, b) => a + b, 0) / period;
   let avgLoss = changes.slice(0, period).filter((c) => c < 0).reduce((a, b) => a + Math.abs(b), 0) / period;
 
-  // Wilder's smoothing for remaining periods (if data > period + 1, already handled by slice)
+  // Wilder's smoothing over all remaining periods (converges with ~250 trading days of input)
   for (let i = period; i < changes.length; i++) {
     const gain = changes[i] > 0 ? changes[i] : 0;
     const loss = changes[i] < 0 ? Math.abs(changes[i]) : 0;

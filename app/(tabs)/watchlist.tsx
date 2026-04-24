@@ -247,6 +247,11 @@ function WatchlistRow({
   const quote = stock.quote;
   const isPositive = (quote?.changePercent ?? 0) >= 0;
   const changeColor = isPositive ? colors.positive : colors.negative;
+  const rsiColor = stock.isOverbought
+    ? colors.negative
+    : stock.isOversold
+      ? colors.positive
+      : colors.textMuted;
 
   return (
     <TouchableOpacity
@@ -276,6 +281,11 @@ function WatchlistRow({
           </>
         ) : (
           <Text style={styles.noData}>Loading...</Text>
+        )}
+        {stock.rsi != null && (
+          <Text style={[styles.rsiText, { color: rsiColor }]}>
+            RSI {stock.rsi.toFixed(1)}
+          </Text>
         )}
       </View>
 
@@ -403,6 +413,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     rowPrice: { alignItems: 'flex-end' },
     priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
     changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+    rsiText: { fontSize: 11, fontWeight: '600', marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
     deleteBtn: { padding: 4 },
   });

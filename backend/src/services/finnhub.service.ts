@@ -1,7 +1,21 @@
 import axios from 'axios';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const YahooFinanceClass = require('yahoo-finance2').default as new (opts?: Record<string, unknown>) => {
+  historical: (
+    symbol: string,
+    opts: { period1: Date; period2: Date; interval: string }
+  ) => Promise<Array<{ close: number; high: number; low: number }>>;
+};
 
 const BASE_URL = 'https://finnhub.io/api/v1';
 const API_KEY = process.env.FINNHUB_API_KEY ?? '';
+
+/** Lazy singleton — created once to suppress the deprecation notice every call */
+let _yf: InstanceType<typeof YahooFinanceClass> | null = null;
+function getYF(): InstanceType<typeof YahooFinanceClass> {
+  if (!_yf) _yf = new YahooFinanceClass({ suppressNotices: ['ripHistorical'] });
+  return _yf;
+}
 
 // ─── In-memory TTL cache ──────────────────────────────────────────────────────
 // Avoids hammering Finnhub on every page load; quotes refresh every 60s,
@@ -187,20 +201,52 @@ export async function getCompanyProfile(symbol: string): Promise<CompanyProfile 
   }
 }
 
-/** Derive 52-week high/low and close prices from daily candle data (cached 10 min) */
+/** Fetch daily OHLC from Yahoo Finance as a fallback (no API key needed) */
+async function getDailyDataFromYahoo(symbol: string, days = 365): Promise<Week52Data | null> {
+  try {
+    const period1 = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const period2 = new Date();
+    const rows = await getYF().historical(symbol, { period1, period2, interval: '1d' });
+    if (!rows || rows.length < 15) return null;
+
+    const closes = rows.map((r) => r.close).filter((c) => c != null);
+    const highs   = rows.map((r) => r.high).filter((h) => h != null);
+    const lows    = rows.map((r) => r.low).filter((l) => l != null);
+    if (closes.length < 15) return null;
+
+    return {
+      high52w: Math.max(...highs),
+      low52w:  Math.min(...lows),
+      closes,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Derive 52-week high/low and close prices from daily candle data (cached 10 min).
+ *  Tries Finnhub first; falls back to Yahoo Finance if candles are unavailable. */
 export async function getWeek52Data(symbol: string): Promise<Week52Data | null> {
   const key = `week52:${symbol}`;
   const cached = getCached<Week52Data>(key);
   if (cached) return cached;
 
+  // Try Finnhub candles first; on failure (free-tier 403) fall back to Yahoo Finance
   const candles = await getDailyCandles(symbol, 365);
-  if (!candles || candles.close.length < 15) return null;
+  let result: Week52Data | null = null;
 
-  const high52w = Math.max(...candles.high);
-  const low52w = Math.min(...candles.low);
-  const closes = candles.close;
+  if (candles && candles.close.length >= 15) {
+    result = {
+      high52w: Math.max(...candles.high),
+      low52w:  Math.min(...candles.low),
+      closes:  candles.close,
+    };
+  } else {
+    result = await getDailyDataFromYahoo(symbol);
+  }
 
-  const result: Week52Data = { high52w, low52w, closes };
+  if (!result) return null;
+
   setCached(key, result, TTL.WEEK52);
   return result;
 }

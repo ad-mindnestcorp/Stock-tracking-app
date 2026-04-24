@@ -85,6 +85,9 @@ export interface WatchlistStock {
   company_name: string | null;
   added_at: string;
   quote: StockQuote | null;
+  rsi: number | null;
+  isOverbought: boolean;
+  isOversold: boolean;
 }
 
 export interface AlertLog {

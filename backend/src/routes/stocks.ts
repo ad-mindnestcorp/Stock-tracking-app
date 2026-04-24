@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { getQuote, searchSymbols } from '../services/finnhub.service';
+import { getQuote, getWeek52Data, searchSymbols } from '../services/finnhub.service';
+import { calculateRSI } from '../services/rsi.service';
 
 const router = Router();
 
@@ -36,14 +37,24 @@ router.get('/', async (req: Request, res: Response) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Enrich with live quotes
+  // Enrich with live quotes and RSI
   const enriched = await Promise.all(
     (data ?? []).map(async (stock) => {
       try {
-        const quote = await getQuote(stock.symbol);
-        return { ...stock, quote };
+        const [quote, week52] = await Promise.all([
+          getQuote(stock.symbol),
+          getWeek52Data(stock.symbol),
+        ]);
+        const rsiResult = week52 ? calculateRSI(week52.closes) : null;
+        return {
+          ...stock,
+          quote,
+          rsi: rsiResult?.rsi ?? null,
+          isOverbought: rsiResult?.isOverbought ?? false,
+          isOversold: rsiResult?.isOversold ?? false,
+        };
       } catch {
-        return { ...stock, quote: null };
+        return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false };
       }
     })
   );

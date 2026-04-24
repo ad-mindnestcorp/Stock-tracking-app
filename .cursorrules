@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 - Only modify the minimum required code to solve the task
 - Do not rewrite entire files unless explicitly asked
 - Prefer small diffs over full rewrites
