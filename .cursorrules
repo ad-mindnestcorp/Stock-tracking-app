@@ -1,0 +1,9 @@
+- Only modify the minimum required code to solve the task
+- Do not rewrite entire files unless explicitly asked
+- Prefer small diffs over full rewrites
+- Follow existing project patterns and structure
+- Do not add unnecessary comments or logs
+- Ask for clarification if the task is ambiguous
+- When fixing bugs, identify root cause before suggesting fix
+- When implementing features, break into small steps
+- Avoid touching unrelated files

@@ -1,0 +1,4 @@
+{
+    "name": "feature",
+    "prompt": "Implement the feature step-by-step. Modify only necessary files. Avoid full rewrites."
+  }

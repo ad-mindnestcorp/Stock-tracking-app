@@ -1,0 +1,4 @@
+{
+    "name": "refactor",
+    "prompt": "Improve code structure and readability without changing behavior. Make minimal changes only."
+  }

@@ -1,0 +1,4 @@
+{
+    "name": "debug",
+    "prompt": "Find the root cause of the issue. Explain briefly. Suggest the minimal fix. Do not rewrite full files."
+  }
