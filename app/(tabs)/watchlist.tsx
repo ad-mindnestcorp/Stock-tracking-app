@@ -188,7 +188,7 @@ function StockSearchInput({
       {showDropdown && (
         <View style={[styles.dropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {results.length === 0 && !isFetching ? (
-            <Text style={styles.dropdownEmpty}>No results for "{debouncedQuery}"</Text>
+            <Text style={styles.dropdownEmpty}>No results for &ldquo;{debouncedQuery}&rdquo;</Text>
           ) : (
             <ScrollView
               keyboardShouldPersistTaps="handled"
