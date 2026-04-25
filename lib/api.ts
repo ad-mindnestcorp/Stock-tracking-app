@@ -88,6 +88,8 @@ export interface WatchlistStock {
   rsi: number | null;
   isOverbought: boolean;
   isOversold: boolean;
+  week52High: number | null;
+  week52Low: number | null;
 }
 
 export interface AlertLog {

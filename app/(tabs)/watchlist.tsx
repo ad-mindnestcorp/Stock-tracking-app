@@ -233,6 +233,18 @@ function StockSearchInput({
   );
 }
 
+function calc52WeekPercent(price: number, low: number, high: number): number {
+  if (high === low) return 0;
+  return Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100));
+}
+
+function get52WeekColor(pct: number, positive: string, negative: string): string {
+  if (pct <= 30) return positive;
+  if (pct <= 70) return '#F59E0B';
+  return negative;
+}
+
+
 function WatchlistRow({
   stock,
   onDelete,
@@ -253,6 +265,15 @@ function WatchlistRow({
       ? colors.positive
       : colors.textMuted;
 
+  const show52Week =
+    quote != null &&
+    stock.week52High != null &&
+    stock.week52Low != null;
+
+  const pct52 = show52Week
+    ? calc52WeekPercent(quote!.currentPrice, stock.week52Low!, stock.week52High!)
+    : null;
+
   return (
     <TouchableOpacity
       style={styles.row}
@@ -260,42 +281,54 @@ function WatchlistRow({
       onLongPress={() => onDelete(stock.symbol)}
       activeOpacity={0.7}
     >
-      <View style={styles.logoWrap}>
-        <Text style={styles.logoText}>{stock.symbol.slice(0, 2)}</Text>
-      </View>
+      {/* Top: logo / info / price / delete */}
+      <View style={styles.rowTop}>
+        <View style={styles.logoWrap}>
+          <Text style={styles.logoText}>{stock.symbol.slice(0, 2)}</Text>
+        </View>
 
-      <View style={styles.rowInfo}>
-        <Text style={styles.rowSymbol}>{stock.symbol}</Text>
-        <Text style={styles.rowName} numberOfLines={1}>
-          {stock.company_name ?? stock.symbol}
-        </Text>
-      </View>
-
-      <View style={styles.rowPrice}>
-        {quote ? (
-          <>
-            <Text style={styles.priceText}>${quote.currentPrice.toFixed(2)}</Text>
-            <Text style={[styles.changeText, { color: changeColor }]}>
-              {isPositive ? '+' : ''}{(quote.changePercent ?? 0).toFixed(2)}%
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.noData}>Loading...</Text>
-        )}
-        {stock.rsi != null && (
-          <Text style={[styles.rsiText, { color: rsiColor }]}>
-            RSI {stock.rsi.toFixed(1)}
+        <View style={styles.rowInfo}>
+          <Text style={styles.rowSymbol}>{stock.symbol}</Text>
+          <Text style={styles.rowName} numberOfLines={1}>
+            {stock.company_name ?? stock.symbol}
           </Text>
-        )}
-      </View>
+        </View>
 
-      <TouchableOpacity
-        style={styles.deleteBtn}
-        onPress={() => onDelete(stock.symbol)}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="trash-outline" size={18} color={colors.negative} />
-      </TouchableOpacity>
+        {pct52 != null && (
+          <View style={styles.week52Badge}>
+            <Text style={[styles.week52Text, { color: get52WeekColor(pct52, colors.positive, colors.negative) }]}>
+              {pct52.toFixed(0)}%
+            </Text>
+            <Text style={styles.week52Label}>52W</Text>
+          </View>
+        )}
+
+        <View style={styles.rowPrice}>
+          {quote ? (
+            <>
+              <Text style={styles.priceText}>${quote.currentPrice.toFixed(2)}</Text>
+              <Text style={[styles.changeText, { color: changeColor }]}>
+                {isPositive ? '+' : ''}{(quote.changePercent ?? 0).toFixed(2)}%
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.noData}>Loading...</Text>
+          )}
+          {stock.rsi != null && (
+            <Text style={[styles.rsiText, { color: rsiColor }]}>
+              RSI {stock.rsi.toFixed(1)}
+            </Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={() => onDelete(stock.symbol)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="trash-outline" size={18} color={colors.negative} />
+        </TouchableOpacity>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -391,11 +424,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     list: { paddingHorizontal: 20, paddingBottom: 20 },
 
     row: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: 'column',
       paddingVertical: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+    },
+    rowTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: 12,
     },
     logoWrap: {
@@ -416,5 +452,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     rsiText: { fontSize: 11, fontWeight: '600', marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
     deleteBtn: { padding: 4 },
+
+    week52Badge: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 4,
+    },
+    week52Text: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    week52Label: {
+      fontSize: 9,
+      color: colors.textMuted,
+      fontWeight: '600',
+      marginTop: 1,
+    },
   });
 }

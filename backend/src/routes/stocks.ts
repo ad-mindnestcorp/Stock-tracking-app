@@ -52,9 +52,11 @@ router.get('/', async (req: Request, res: Response) => {
           rsi: rsiResult?.rsi ?? null,
           isOverbought: rsiResult?.isOverbought ?? false,
           isOversold: rsiResult?.isOversold ?? false,
+          week52High: week52?.high52w ?? null,
+          week52Low: week52?.low52w ?? null,
         };
       } catch {
-        return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false };
+        return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false, week52High: null, week52Low: null };
       }
     })
   );
