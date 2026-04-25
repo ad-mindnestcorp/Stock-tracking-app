@@ -294,15 +294,6 @@ function WatchlistRow({
           </Text>
         </View>
 
-        {pct52 != null && (
-          <View style={styles.week52Badge}>
-            <Text style={[styles.week52Text, { color: get52WeekColor(pct52, colors.positive, colors.negative) }]}>
-              {pct52.toFixed(0)}%
-            </Text>
-            <Text style={styles.week52Label}>52W</Text>
-          </View>
-        )}
-
         <View style={styles.rowPrice}>
           {quote ? (
             <>
@@ -314,10 +305,21 @@ function WatchlistRow({
           ) : (
             <Text style={styles.noData}>Loading...</Text>
           )}
-          {stock.rsi != null && (
-            <Text style={[styles.rsiText, { color: rsiColor }]}>
-              RSI {stock.rsi.toFixed(1)}
-            </Text>
+          {(stock.rsi != null || pct52 != null) && (
+            <View style={styles.rsiRow}>
+              {pct52 != null && (
+                <Text style={styles.rsiText}>
+                  <Text style={{ color: '#ffffff' }}>52W </Text>
+                  <Text style={{ color: get52WeekColor(pct52, colors.positive, colors.negative) }}>{pct52.toFixed(0)}%</Text>
+                </Text>
+              )}
+              {stock.rsi != null && (
+                <Text style={styles.rsiText}>
+                  <Text style={{ color: '#ffffff' }}>RSI </Text>
+                  <Text style={{ color: rsiColor }}>{stock.rsi.toFixed(1)}</Text>
+                </Text>
+              )}
+            </View>
           )}
         </View>
 
@@ -449,24 +451,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     rowPrice: { alignItems: 'flex-end' },
     priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
     changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-    rsiText: { fontSize: 11, fontWeight: '600', marginTop: 3 },
+    rsiText: { fontSize: 11, fontWeight: '600' },
+    rsiRow: { flexDirection: 'row', gap: 6, marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
     deleteBtn: { padding: 4 },
-
-    week52Badge: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 4,
-    },
-    week52Text: {
-      fontSize: 13,
-      fontWeight: '700',
-    },
-    week52Label: {
-      fontSize: 9,
-      color: colors.textMuted,
-      fontWeight: '600',
-      marginTop: 1,
-    },
   });
 }
