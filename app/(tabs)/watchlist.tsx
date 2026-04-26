@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   SafeAreaView,
-  Alert,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
@@ -15,7 +14,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { useWatchlist, useAddStock, useRemoveStock } from '@/hooks/use-watchlist';
+import { useWatchlist, useAddStock } from '@/hooks/use-watchlist';
 import { watchlistApi, type WatchlistStock, type StockSearchResult } from '@/lib/api';
 import { useTheme } from '@/context/theme-context';
 import { Radius } from '@/constants/theme';
@@ -27,23 +26,6 @@ export default function WatchlistScreen() {
 
   const { data: stocks = [], isLoading, isError, error, refetch, isRefetching } = useWatchlist();
   const { mutate: addStock } = useAddStock();
-  const { mutate: removeStock } = useRemoveStock();
-
-  const handleDelete = (symbol: string) => {
-    Alert.alert(
-      'Remove Stock',
-      `Remove ${symbol} from your watchlist?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => removeStock(symbol),
-        },
-      ]
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
@@ -90,7 +72,7 @@ export default function WatchlistScreen() {
           }
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <WatchlistRow stock={item} onDelete={handleDelete} colors={colors} styles={styles} />
+            <WatchlistRow stock={item} colors={colors} styles={styles} />
           )}
         />
       )}
@@ -253,12 +235,10 @@ function getVolumeColor(relVol: number, positive: string, negative: string, mute
 
 function WatchlistRow({
   stock,
-  onDelete,
   colors,
   styles,
 }: {
   stock: WatchlistStock;
-  onDelete: (symbol: string) => void;
   colors: ReturnType<typeof useTheme>['colors'];
   styles: ReturnType<typeof createStyles>;
 }) {
@@ -284,10 +264,8 @@ function WatchlistRow({
     <TouchableOpacity
       style={styles.row}
       onPress={() => router.push(`/stock/${stock.symbol}`)}
-      onLongPress={() => onDelete(stock.symbol)}
       activeOpacity={0.7}
     >
-      {/* Top: logo / info / price / delete */}
       <View style={styles.rowTop}>
         <View style={styles.logoWrap}>
           <Text style={styles.logoText}>{stock.symbol.slice(0, 2)}</Text>
@@ -302,14 +280,25 @@ function WatchlistRow({
 
         <View style={styles.rowPrice}>
           {quote ? (
-            <>
+            <View style={styles.priceRow}>
+              {(stock.ma50Trend != null || stock.ma200Trend != null) && (
+                <View style={styles.maTrendWrap}>
+                  <Text style={styles.maTrendText}>
+                    <Text style={{ color: stock.ma50Trend === 'green' ? colors.positive : stock.ma50Trend === 'red' ? colors.negative : colors.textMuted }}>50</Text>
+                    <Text style={{ color: colors.textMuted }}>/</Text>
+                    <Text style={{ color: stock.ma200Trend === 'green' ? colors.positive : stock.ma200Trend === 'red' ? colors.negative : colors.textMuted }}>200</Text>
+                  </Text>
+                </View>
+              )}
               <Text style={styles.priceText}>${quote.currentPrice.toFixed(2)}</Text>
-              <Text style={[styles.changeText, { color: changeColor }]}>
-                {isPositive ? '+' : ''}{(quote.changePercent ?? 0).toFixed(2)}%
-              </Text>
-            </>
+            </View>
           ) : (
             <Text style={styles.noData}>Loading...</Text>
+          )}
+          {quote && (
+            <Text style={[styles.changeText, { color: changeColor }]}>
+              {isPositive ? '+' : ''}{(quote.changePercent ?? 0).toFixed(2)}%
+            </Text>
           )}
           {(stock.rsi != null || pct52 != null || stock.relativeVolume !== undefined) && (
             <View style={styles.rsiRow}>
@@ -348,14 +337,6 @@ function WatchlistRow({
             </View>
           )}
         </View>
-
-        <TouchableOpacity
-          style={styles.deleteBtn}
-          onPress={() => onDelete(stock.symbol)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="trash-outline" size={18} color={colors.negative} />
-        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -475,13 +456,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     rowSymbol: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
     rowName: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
     rowPrice: { alignItems: 'flex-end' },
+    priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    maTrendWrap: { alignItems: 'center', justifyContent: 'center' },
+    maTrendText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
     changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
     rsiText: { fontSize: 11, fontWeight: '600' },
     rsiInlineRow: { flexDirection: 'row', alignItems: 'center' },
     rsiInlineArrow: { marginLeft: 2 },
     rsiRow: { flexDirection: 'row', gap: 6, marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
-    deleteBtn: { padding: 4 },
   });
 }

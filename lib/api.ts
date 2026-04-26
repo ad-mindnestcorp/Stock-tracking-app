@@ -95,6 +95,10 @@ export interface WatchlistStock {
   rsiTrend?: 'up' | 'down' | 'flat';
   previousRsi?: number | null;
   relativeVolume?: number | null;
+  ma50?: number | null;
+  ma200?: number | null;
+  ma50Trend?: 'green' | 'red' | null;
+  ma200Trend?: 'green' | 'red' | null;
 }
 
 export interface AlertLog {

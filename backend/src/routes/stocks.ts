@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { getQuote, getWeek52Data, searchSymbols } from '../services/finnhub.service';
 import { calculateRSI } from '../services/rsi.service';
+import { calculateDMA } from '../services/dma.service';
 
 const router = Router();
 
@@ -46,6 +47,7 @@ router.get('/', async (req: Request, res: Response) => {
           getWeek52Data(stock.symbol),
         ]);
         const rsiResult = week52 ? calculateRSI(week52.closes) : null;
+        const dmaResult = week52 && quote ? calculateDMA(week52.closes, quote.currentPrice) : null;
         const currentVolume = quote?.volume;
         const avgVolume = week52?.avgVolume;
         const relativeVolume =
@@ -62,6 +64,10 @@ router.get('/', async (req: Request, res: Response) => {
           week52High: week52?.high52w ?? null,
           week52Low: week52?.low52w ?? null,
           relativeVolume,
+          ma50: dmaResult?.ma50 ?? null,
+          ma200: dmaResult?.ma200 ?? null,
+          ma50Trend: dmaResult?.ma50Trend ?? null,
+          ma200Trend: dmaResult?.ma200Trend ?? null,
         };
       } catch {
         return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false, week52High: null, week52Low: null, relativeVolume: null };
