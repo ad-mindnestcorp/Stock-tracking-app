@@ -244,6 +244,12 @@ function get52WeekColor(pct: number, positive: string, negative: string): string
   return negative;
 }
 
+function getVolumeColor(relVol: number, positive: string, negative: string, muted: string): string {
+  if (relVol > 1.5) return positive;
+  if (relVol < 0.8) return negative;
+  return muted;
+}
+
 
 function WatchlistRow({
   stock,
@@ -305,7 +311,7 @@ function WatchlistRow({
           ) : (
             <Text style={styles.noData}>Loading...</Text>
           )}
-          {(stock.rsi != null || pct52 != null) && (
+          {(stock.rsi != null || pct52 != null || stock.relativeVolume !== undefined) && (
             <View style={styles.rsiRow}>
               {pct52 != null && (
                 <Text style={styles.rsiText}>
@@ -326,6 +332,18 @@ function WatchlistRow({
                     <Ionicons name="arrow-down" size={11} color={colors.negative} style={styles.rsiInlineArrow} />
                   )}
                 </View>
+              )}
+              {stock.relativeVolume !== undefined && (
+                <Text style={styles.rsiText}>
+                  <Text style={{ color: '#ffffff' }}>V </Text>
+                  {stock.relativeVolume != null ? (
+                    <Text style={{ color: getVolumeColor(stock.relativeVolume, colors.positive, colors.negative, colors.textMuted) }}>
+                      {stock.relativeVolume.toFixed(1)}x
+                    </Text>
+                  ) : (
+                    <Text style={{ color: colors.textMuted }}>--</Text>
+                  )}
+                </Text>
               )}
             </View>
           )}

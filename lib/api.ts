@@ -94,6 +94,7 @@ export interface WatchlistStock {
   week52Low: number | null;
   rsiTrend?: 'up' | 'down' | 'flat';
   previousRsi?: number | null;
+  relativeVolume?: number | null;
 }
 
 export interface AlertLog {

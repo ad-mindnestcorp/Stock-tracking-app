@@ -46,6 +46,12 @@ router.get('/', async (req: Request, res: Response) => {
           getWeek52Data(stock.symbol),
         ]);
         const rsiResult = week52 ? calculateRSI(week52.closes) : null;
+        const currentVolume = quote?.volume;
+        const avgVolume = week52?.avgVolume;
+        const relativeVolume =
+          currentVolume && avgVolume && avgVolume > 0
+            ? currentVolume / avgVolume
+            : null;
         return {
           ...stock,
           quote,
@@ -55,9 +61,10 @@ router.get('/', async (req: Request, res: Response) => {
           rsiTrend: rsiResult?.rsiTrend ?? 'flat',
           week52High: week52?.high52w ?? null,
           week52Low: week52?.low52w ?? null,
+          relativeVolume,
         };
       } catch {
-        return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false, week52High: null, week52Low: null };
+        return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false, week52High: null, week52Low: null, relativeVolume: null };
       }
     })
   );

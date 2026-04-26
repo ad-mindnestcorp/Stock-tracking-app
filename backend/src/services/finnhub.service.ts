@@ -4,7 +4,7 @@ const YahooFinanceClass = require('yahoo-finance2').default as new (opts?: Recor
   historical: (
     symbol: string,
     opts: { period1: Date; period2: Date; interval: string }
-  ) => Promise<Array<{ close: number; high: number; low: number }>>;
+  ) => Promise<Array<{ close: number; high: number; low: number; volume?: number }>>;
 };
 
 const BASE_URL = 'https://finnhub.io/api/v1';
@@ -56,6 +56,7 @@ export interface StockQuote {
   low: number;
   open: number;
   previousClose: number;
+  volume?: number;
 }
 
 export interface CandleData {
@@ -81,6 +82,7 @@ export interface Week52Data {
   high52w: number;
   low52w: number;
   closes: number[]; // last 14+ close prices for RSI
+  avgVolume?: number; // 30-day average daily volume
 }
 
 /** Fetch real-time quote for a symbol (cached 60 s) */
@@ -103,6 +105,7 @@ export async function getQuote(symbol: string): Promise<StockQuote> {
     low: d.l,
     open: d.o,
     previousClose: d.pc,
+    volume: d.v ?? undefined,
   };
   setCached(key, quote, TTL.QUOTE);
   return quote;
@@ -209,15 +212,22 @@ async function getDailyDataFromYahoo(symbol: string, days = 365): Promise<Week52
     const rows = await getYF().historical(symbol, { period1, period2, interval: '1d' });
     if (!rows || rows.length < 15) return null;
 
-    const closes = rows.map((r) => r.close).filter((c) => c != null);
+    const closes  = rows.map((r) => r.close).filter((c) => c != null);
     const highs   = rows.map((r) => r.high).filter((h) => h != null);
     const lows    = rows.map((r) => r.low).filter((l) => l != null);
+    const volumes = rows.map((r) => r.volume).filter((v): v is number => v != null);
     if (closes.length < 15) return null;
+
+    const last30Volumes = volumes.slice(-30);
+    const avgVolume = last30Volumes.length > 0
+      ? last30Volumes.reduce((sum, v) => sum + v, 0) / last30Volumes.length
+      : undefined;
 
     return {
       high52w: Math.max(...highs),
       low52w:  Math.min(...lows),
       closes,
+      avgVolume,
     };
   } catch {
     return null;
@@ -236,10 +246,15 @@ export async function getWeek52Data(symbol: string): Promise<Week52Data | null> 
   let result: Week52Data | null = null;
 
   if (candles && candles.close.length >= 15) {
+    const last30Vols = candles.volume.slice(-30).filter((v) => v != null && v > 0);
+    const avgVolume = last30Vols.length > 0
+      ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
+      : undefined;
     result = {
       high52w: Math.max(...candles.high),
       low52w:  Math.min(...candles.low),
       closes:  candles.close,
+      avgVolume,
     };
   } else {
     result = await getDailyDataFromYahoo(symbol);
