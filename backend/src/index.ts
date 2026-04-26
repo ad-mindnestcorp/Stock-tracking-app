@@ -6,7 +6,9 @@ import stocksRouter from './routes/stocks';
 import alertsRouter from './routes/alerts';
 import marketRouter from './routes/market';
 import pushTokenRouter from './routes/push-token';
+import trendingRouter from './routes/trending';
 import { startScheduler } from './services/scheduler.service';
+import { refreshTrendingStocks } from './services/reddit.service';
 
 dotenv.config();
 
@@ -21,6 +23,7 @@ app.use('/api/stocks', stocksRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/market', marketRouter);
 app.use('/api/push-token', pushTokenRouter);
+app.use('/api/trending-stocks', trendingRouter);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -30,4 +33,8 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Stockvest backend running on http://localhost:${PORT}`);
   startScheduler();
+  // Seed trending stocks on startup so data is available immediately
+  refreshTrendingStocks().catch((err) =>
+    console.error('[startup] Initial trending refresh failed:', err)
+  );
 });

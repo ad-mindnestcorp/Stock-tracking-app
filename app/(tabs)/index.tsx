@@ -7,12 +7,14 @@ import {
   RefreshControl,
   TextInput,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import { useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useHomeData } from '@/hooks/use-home-data';
-import { type StockQuote, type HomeData } from '@/lib/api';
+import { useTrending } from '@/hooks/use-trending';
+import { type StockQuote, type HomeData, type TrendingStock } from '@/lib/api';
 import { useTheme } from '@/context/theme-context';
 import { Radius } from '@/constants/theme';
 import StockListItem from '@/components/stock-list-item';
@@ -34,6 +36,17 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: homeData, isLoading, isError, error, refetch, isRefetching } = useHomeData();
+  const {
+    data: trendingData,
+    isLoading: isTrendingLoading,
+    isError: isTrendingError,
+    refetch: refetchTrending,
+  } = useTrending();
+
+  const handleRefresh = () => {
+    refetch();
+    refetchTrending();
+  };
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -42,14 +55,14 @@ export default function HomeScreen() {
     }
   };
 
-  const currentList: StockQuote[] = homeData?.[activeTab] ?? [];
+  const currentList: StockQuote[] = activeTab !== 'trending' ? (homeData?.[activeTab] ?? []) : [];
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
         style={styles.scroll}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
+          <RefreshControl refreshing={isRefetching} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
         showsVerticalScrollIndicator={false}
       >
@@ -125,11 +138,37 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
 
-            <View style={styles.listWrap}>
-              {currentList.map((item) => (
-                <StockListItem key={item.symbol} item={item} />
-              ))}
-            </View>
+            {activeTab === 'trending' ? (
+              <View style={styles.listWrap}>
+                {isTrendingLoading ? (
+                  <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+                ) : isTrendingError ? (
+                  <View style={styles.errorCard} accessibilityRole="alert">
+                    <Text style={styles.errorText}>Failed to load Reddit trending stocks</Text>
+                    <TouchableOpacity onPress={() => refetchTrending()} accessibilityRole="button">
+                      <Text style={styles.retryText}>Retry</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : trendingData && trendingData.length > 0 ? (
+                  <>
+                    {trendingData.map((item) => (
+                      <RedditTrendingItem key={item.ticker} item={item} colors={colors} styles={styles} />
+                    ))}
+                    <Text style={styles.lastUpdatedText}>
+                      Updated {new Date(trendingData[0].last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.emptyText}>No trending data yet — check back soon.</Text>
+                )}
+              </View>
+            ) : (
+              <View style={styles.listWrap}>
+                {currentList.map((item) => (
+                  <StockListItem key={item.symbol} item={item} />
+                ))}
+              </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -175,6 +214,50 @@ function MarketSummary({
         </View>
       </View>
     </View>
+  );
+}
+
+function RedditTrendingItem({
+  item,
+  colors,
+  styles,
+}: {
+  item: TrendingStock;
+  colors: ReturnType<typeof useTheme>['colors'];
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const isPositive = item.sentiment > 0;
+  const isNegative = item.sentiment < 0;
+  const sentimentLabel = isPositive ? 'Bullish' : isNegative ? 'Bearish' : 'Neutral';
+  const sentimentColor = isPositive ? colors.positive : isNegative ? colors.negative : colors.textMuted;
+
+  return (
+    <TouchableOpacity
+      style={styles.trendingItem}
+      onPress={() => router.push(`/stock/${item.ticker}`)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.ticker}, rank ${item.rank}, score ${item.score}, ${sentimentLabel}`}
+    >
+      <View style={[styles.rankBadge, { backgroundColor: item.rank <= 3 ? colors.primary : colors.surface }]}>
+        <Text style={[styles.rankText, { color: item.rank <= 3 ? colors.onPrimary : colors.textSecondary }]}>
+          #{item.rank}
+        </Text>
+      </View>
+      <View style={styles.trendingInfo}>
+        <View style={styles.trendingTopRow}>
+          <Text style={styles.trendingTicker}>{item.ticker}</Text>
+          <Text style={[styles.trendArrow, { color: item.trend === 'up' ? colors.positive : colors.negative }]}>
+            {item.trend === 'up' ? '▲' : '▼'}
+          </Text>
+        </View>
+        <View style={styles.trendingBottomRow}>
+          <Text style={styles.trendingMentions}>{item.mentions} mentions · {item.score.toFixed(1)} score</Text>
+          <View style={[styles.sentimentChip, { backgroundColor: sentimentColor + '22' }]}>
+            <Text style={[styles.sentimentLabel, { color: sentimentColor }]}>{sentimentLabel}</Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -256,5 +339,51 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     tabTextActive: { color: colors.primary },
 
     listWrap: { paddingHorizontal: 20, paddingBottom: 20 },
+
+    trendingItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      marginBottom: 8,
+      gap: 12,
+    },
+    rankBadge: {
+      width: 36,
+      height: 36,
+      borderRadius: Radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rankText: { fontSize: 12, fontWeight: '700' },
+    trendingInfo: { flex: 1 },
+    trendingTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    trendingTicker: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    trendArrow: { fontSize: 13, fontWeight: '700' },
+    trendingBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+    trendingMentions: { fontSize: 12, color: colors.textMuted },
+    sentimentChip: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: Radius.full,
+    },
+    sentimentLabel: { fontSize: 11, fontWeight: '600' },
+
+    lastUpdatedText: {
+      textAlign: 'center',
+      color: colors.textMuted,
+      fontSize: 11,
+      marginTop: 8,
+      marginBottom: 4,
+    },
+
+    emptyText: {
+      textAlign: 'center',
+      color: colors.textMuted,
+      marginTop: 32,
+      fontSize: 14,
+    },
   });
 }

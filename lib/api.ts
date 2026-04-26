@@ -128,6 +128,16 @@ export interface StockSearchResult {
   type: string;
 }
 
+export interface TrendingStock {
+  ticker: string;
+  mentions: number;
+  score: number;
+  sentiment: number;
+  trend: 'up' | 'down';
+  rank: number;
+  last_updated: string;
+}
+
 // ─── Market ──────────────────────────────────────────────────────────────────
 
 function marketSymbolPath(symbol: string): string {
@@ -168,6 +178,12 @@ export const alertsApi = {
     request<{ message: string }>(`/api/alerts/${id}/read`, { method: 'PATCH' }),
   markAllRead: () =>
     request<{ message: string }>('/api/alerts/read-all', { method: 'PATCH' }),
+};
+
+// ─── Trending (Reddit) ────────────────────────────────────────────────────────
+
+export const trendingApi = {
+  getAll: () => request<TrendingStock[]>('/api/trending-stocks'),
 };
 
 // ─── Push token ───────────────────────────────────────────────────────────────

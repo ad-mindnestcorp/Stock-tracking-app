@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { runAllAlertChecks } from './alert.service';
+import { refreshTrendingStocks } from './reddit.service';
 
 let isRunning = false;
 
@@ -22,6 +23,17 @@ export function startScheduler(): void {
   });
 
   console.log('Scheduler started — alert checks every 5 minutes (weekdays)');
+
+  // Refresh Reddit trending stocks every 2 hours, every day
+  cron.schedule('0 */2 * * *', async () => {
+    try {
+      await refreshTrendingStocks();
+    } catch (err) {
+      console.error('[scheduler] Trending refresh failed:', err);
+    }
+  });
+
+  console.log('Scheduler started — trending stocks refresh every 2 hours');
 }
 
 /** Manually trigger a check immediately (useful for testing) */

@@ -30,6 +30,22 @@ CREATE TABLE IF NOT EXISTS alerts_log (
   triggered_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- trending_stocks: Reddit-based trending stocks cache (written by backend service role)
+CREATE TABLE IF NOT EXISTS trending_stocks (
+  ticker       TEXT        PRIMARY KEY,
+  mentions     INT         NOT NULL,
+  rank         INT         NOT NULL,
+  score        DECIMAL(10,2) NOT NULL DEFAULT 0,
+  sentiment    DECIMAL(5,2)  NOT NULL DEFAULT 0,
+  trend        TEXT          NOT NULL DEFAULT 'up',
+  last_updated TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Migration: add score, sentiment, trend columns if table already exists
+ALTER TABLE trending_stocks ADD COLUMN IF NOT EXISTS score     DECIMAL(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE trending_stocks ADD COLUMN IF NOT EXISTS sentiment DECIMAL(5,2)  NOT NULL DEFAULT 0;
+ALTER TABLE trending_stocks ADD COLUMN IF NOT EXISTS trend     TEXT          NOT NULL DEFAULT 'up';
+
 -- push_tokens: expo push notification tokens per user
 CREATE TABLE IF NOT EXISTS push_tokens (
   id         UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
