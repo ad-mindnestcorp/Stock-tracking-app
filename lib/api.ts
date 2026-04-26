@@ -76,6 +76,8 @@ export interface StockDetail extends StockQuote {
   rsi: number | null;
   isOverbought: boolean;
   isOversold: boolean;
+  rsiTrend?: 'up' | 'down' | 'flat';
+  previousRsi?: number | null;
 }
 
 export interface WatchlistStock {
@@ -90,6 +92,8 @@ export interface WatchlistStock {
   isOversold: boolean;
   week52High: number | null;
   week52Low: number | null;
+  rsiTrend?: 'up' | 'down' | 'flat';
+  previousRsi?: number | null;
 }
 
 export interface AlertLog {

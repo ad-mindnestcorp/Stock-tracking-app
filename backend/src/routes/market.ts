@@ -50,6 +50,7 @@ router.get('/detail/:symbol', async (req: Request, res: Response) => {
       rsi: rsiResult?.rsi ?? null,
       isOverbought: rsiResult?.isOverbought ?? false,
       isOversold: rsiResult?.isOversold ?? false,
+      rsiTrend: rsiResult?.rsiTrend ?? 'flat',
     });
   } catch (err) {
     console.error(`Detail fetch failed for ${symbol}:`, err);

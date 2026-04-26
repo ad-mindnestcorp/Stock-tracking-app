@@ -7,13 +7,15 @@ export interface RSIResult {
   rsi: number;
   isOverbought: boolean; // RSI > 70
   isOversold: boolean;   // RSI < 30
+  rsiTrend: 'up' | 'down' | 'flat';
+  previousRsi: number | null;
 }
 
 /**
- * Calculate RSI-14 from an array of close prices (chronological order, oldest first).
- * Returns null if not enough data.
+ * Core Wilder's smoothing RSI computation. Returns the RSI value or null if
+ * there is not enough data.
  */
-export function calculateRSI(closes: number[], period = 14): RSIResult | null {
+function computeRSIValue(closes: number[], period: number): number | null {
   if (closes.length < period + 1) return null;
 
   const changes = closes.slice(1).map((p, i) => p - closes[i]);
@@ -30,16 +32,34 @@ export function calculateRSI(closes: number[], period = 14): RSIResult | null {
     avgLoss = (avgLoss * (period - 1) + loss) / period;
   }
 
-  if (avgLoss === 0) {
-    return { rsi: 100, isOverbought: true, isOversold: false };
-  }
+  if (avgLoss === 0) return 100;
 
   const rs = avgGain / avgLoss;
-  const rsi = Math.round((100 - 100 / (1 + rs)) * 100) / 100;
+  return Math.round((100 - 100 / (1 + rs)) * 100) / 100;
+}
+
+/**
+ * Calculate RSI-14 from an array of close prices (chronological order, oldest first).
+ * Also computes day-over-day trend by comparing today's RSI to yesterday's.
+ * Returns null if not enough data.
+ */
+export function calculateRSI(closes: number[], period = 14): RSIResult | null {
+  const rsi = computeRSIValue(closes, period);
+  if (rsi === null) return null;
+
+  const previousRsi = computeRSIValue(closes.slice(0, -1), period);
+
+  let rsiTrend: 'up' | 'down' | 'flat' = 'flat';
+  if (previousRsi !== null) {
+    if (rsi > previousRsi) rsiTrend = 'up';
+    else if (rsi < previousRsi) rsiTrend = 'down';
+  }
 
   return {
     rsi,
     isOverbought: rsi > 70,
     isOversold: rsi < 30,
+    rsiTrend,
+    previousRsi,
   };
 }

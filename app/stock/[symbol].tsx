@@ -219,9 +219,17 @@ export default function StockDetailScreen() {
                   <Text style={[styles.rsiBadgeText, { color: getRsiColor() }]}>{getRsiLabel()}</Text>
                 </View>
               </View>
-              <Text style={[styles.rsiValue, { color: getRsiColor() }]}>
-                {detail.rsi.toFixed(1)}
-              </Text>
+              <View style={styles.rsiValueRow}>
+                <Text style={[styles.rsiValue, { color: getRsiColor() }]}>
+                  {detail.rsi.toFixed(1)}
+                </Text>
+                {detail.rsiTrend === 'up' && (
+                  <Ionicons name="arrow-up" size={20} color={colors.positive} style={styles.rsiArrow} />
+                )}
+                {detail.rsiTrend === 'down' && (
+                  <Ionicons name="arrow-down" size={20} color={colors.negative} style={styles.rsiArrow} />
+                )}
+              </View>
               <View style={styles.rsiBar}>
                 <View style={styles.rsiBarBg} />
                 <View
@@ -431,7 +439,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     rsiLabel: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
     rsiBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
     rsiBadgeText: { fontSize: 10, fontWeight: '700' },
-    rsiValue: { fontSize: 28, fontWeight: '800', marginBottom: 12 },
+    rsiValueRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    rsiValue: { fontSize: 28, fontWeight: '800' },
+    rsiArrow: { marginLeft: 6 },
     rsiBar: {
       height: 6,
       borderRadius: 3,

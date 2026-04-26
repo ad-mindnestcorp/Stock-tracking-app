@@ -314,10 +314,18 @@ function WatchlistRow({
                 </Text>
               )}
               {stock.rsi != null && (
-                <Text style={styles.rsiText}>
-                  <Text style={{ color: '#ffffff' }}>RSI </Text>
-                  <Text style={{ color: rsiColor }}>{stock.rsi.toFixed(1)}</Text>
-                </Text>
+                <View style={styles.rsiInlineRow}>
+                  <Text style={styles.rsiText}>
+                    <Text style={{ color: '#ffffff' }}>RSI </Text>
+                    <Text style={{ color: rsiColor }}>{stock.rsi.toFixed(1)}</Text>
+                  </Text>
+                  {stock.rsiTrend === 'up' && (
+                    <Ionicons name="arrow-up" size={11} color={colors.positive} style={styles.rsiInlineArrow} />
+                  )}
+                  {stock.rsiTrend === 'down' && (
+                    <Ionicons name="arrow-down" size={11} color={colors.negative} style={styles.rsiInlineArrow} />
+                  )}
+                </View>
               )}
             </View>
           )}
@@ -452,6 +460,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
     changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
     rsiText: { fontSize: 11, fontWeight: '600' },
+    rsiInlineRow: { flexDirection: 'row', alignItems: 'center' },
+    rsiInlineArrow: { marginLeft: 2 },
     rsiRow: { flexDirection: 'row', gap: 6, marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
     deleteBtn: { padding: 4 },
