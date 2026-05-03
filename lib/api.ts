@@ -99,6 +99,10 @@ export interface WatchlistStock {
   ma200?: number | null;
   ma50Trend?: 'green' | 'red' | null;
   ma200Trend?: 'green' | 'red' | null;
+  supportLevel?: number | null;
+  resistanceLevel?: number | null;
+  srSignal?: 'near_support' | 'near_resistance' | null;
+  momentumScore?: number | null;
 }
 
 export interface AlertLog {

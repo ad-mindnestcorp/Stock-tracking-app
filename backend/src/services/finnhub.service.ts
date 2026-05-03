@@ -5,6 +5,7 @@ const YahooFinanceClass = require('yahoo-finance2').default as new (opts?: Recor
     symbol: string,
     opts: { period1: Date; period2: Date; interval: string }
   ) => Promise<Array<{ close: number; high: number; low: number; volume?: number }>>;
+  quote: (symbol: string) => Promise<{ regularMarketVolume?: number }>;
 };
 
 const BASE_URL = 'https://finnhub.io/api/v1';
@@ -40,8 +41,9 @@ function setCached<T>(key: string, data: T, ttlMs: number): void {
 }
 
 const TTL = {
-  QUOTE: 60_000,         // 60 s  — live price data
-  PROFILE: 86_400_000,   // 24 h  — company info
+  QUOTE: 60_000,              // 60 s  — live price data
+  VOLUME: 60_000,             // 60 s  — intraday volume
+  PROFILE: 86_400_000,        // 24 h  — company info
   CANDLES_INTRADAY: 300_000,  // 5 min
   CANDLES_DAILY: 600_000,     // 10 min
   WEEK52: 600_000,            // 10 min
@@ -83,6 +85,29 @@ export interface Week52Data {
   low52w: number;
   closes: number[]; // last 14+ close prices for RSI
   avgVolume?: number; // 30-day average daily volume
+  recentHighs?: number[]; // last 30 candle highs for support/resistance
+  recentLows?: number[];  // last 30 candle lows for support/resistance
+}
+
+/** Fetch current trading volume from Yahoo Finance (cached 60 s) */
+async function getVolumeFromYahoo(symbol: string): Promise<number | undefined> {
+  const key = `volume:yahoo:${symbol}`;
+  const cached = getCached<number>(key);
+  if (cached !== null) {
+    console.log(`[yahoo:volume] ${symbol} — cache hit: ${cached}`);
+    return cached;
+  }
+
+  try {
+    const result = await getYF().quote(symbol);
+    const volume = result?.regularMarketVolume;
+    console.log(`[yahoo:volume] ${symbol} — regularMarketVolume=${volume}`);
+    if (volume != null) setCached(key, volume, TTL.VOLUME);
+    return volume;
+  } catch (err) {
+    console.warn(`[yahoo:volume] ${symbol} — failed to fetch:`, err);
+    return undefined;
+  }
 }
 
 /** Fetch real-time quote for a symbol (cached 60 s) */
@@ -96,6 +121,16 @@ export async function getQuote(symbol: string): Promise<StockQuote> {
     timeout: 8000,
   });
   const d = res.data;
+  console.log(`[finnhub:quote] ${symbol} raw — c=${d.c} v=${d.v} t=${d.t} status=${res.status}`);
+
+  let volume: number | undefined = d.v != null && d.v > 0 ? d.v : undefined;
+  if (volume == null) {
+    console.log(`[finnhub:quote] ${symbol} — volume missing from Finnhub, falling back to Yahoo Finance`);
+    volume = await getVolumeFromYahoo(symbol);
+  } else {
+    console.log(`[finnhub:quote] ${symbol} — volume from Finnhub: ${volume}`);
+  }
+
   const quote: StockQuote = {
     symbol,
     currentPrice: d.c,
@@ -105,7 +140,7 @@ export async function getQuote(symbol: string): Promise<StockQuote> {
     low: d.l,
     open: d.o,
     previousClose: d.pc,
-    volume: d.v ?? undefined,
+    volume,
   };
   setCached(key, quote, TTL.QUOTE);
   return quote;
@@ -228,6 +263,8 @@ async function getDailyDataFromYahoo(symbol: string, days = 365): Promise<Week52
       low52w:  Math.min(...lows),
       closes,
       avgVolume,
+      recentHighs: highs.slice(-30),
+      recentLows:  lows.slice(-30),
     };
   } catch {
     return null;
@@ -250,14 +287,23 @@ export async function getWeek52Data(symbol: string): Promise<Week52Data | null> 
     const avgVolume = last30Vols.length > 0
       ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
       : undefined;
+    console.log(`[week52:finnhub] ${symbol} — candle bars=${candles.close.length} last30Vols count=${last30Vols.length} avgVolume=${avgVolume}`);
     result = {
       high52w: Math.max(...candles.high),
       low52w:  Math.min(...candles.low),
       closes:  candles.close,
       avgVolume,
+      recentHighs: candles.high.slice(-30),
+      recentLows:  candles.low.slice(-30),
     };
   } else {
+    console.log(`[week52:yahoo] ${symbol} — Finnhub candles unavailable, falling back to Yahoo Finance`);
     result = await getDailyDataFromYahoo(symbol);
+    if (result) {
+      console.log(`[week52:yahoo] ${symbol} — avgVolume=${result.avgVolume} closes count=${result.closes.length}`);
+    } else {
+      console.log(`[week52:yahoo] ${symbol} — Yahoo Finance also returned null`);
+    }
   }
 
   if (!result) return null;

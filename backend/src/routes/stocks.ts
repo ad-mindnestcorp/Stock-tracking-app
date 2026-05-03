@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { getQuote, getWeek52Data, searchSymbols } from '../services/finnhub.service';
 import { calculateRSI } from '../services/rsi.service';
 import { calculateDMA } from '../services/dma.service';
+import { calculateSupportResistance } from '../services/support-resistance.service';
+import { calculateMomentum } from '../services/momentum.service';
 
 const router = Router();
 
@@ -48,12 +50,21 @@ router.get('/', async (req: Request, res: Response) => {
         ]);
         const rsiResult = week52 ? calculateRSI(week52.closes) : null;
         const dmaResult = week52 && quote ? calculateDMA(week52.closes, quote.currentPrice) : null;
+        const srResult =
+          week52?.recentLows && week52?.recentHighs && quote
+            ? calculateSupportResistance(week52.recentLows, week52.recentHighs, quote.currentPrice)
+            : null;
         const currentVolume = quote?.volume;
         const avgVolume = week52?.avgVolume;
+        console.log(`[volume] ${stock.symbol} — currentVolume=${currentVolume} avgVolume=${avgVolume} quoteRaw=${JSON.stringify(quote)}`);
         const relativeVolume =
-          currentVolume && avgVolume && avgVolume > 0
+          currentVolume != null && avgVolume != null && avgVolume > 0
             ? currentVolume / avgVolume
             : null;
+        console.log(`[volume] ${stock.symbol} — relativeVolume=${relativeVolume}`);
+        const momentumScore = week52
+          ? calculateMomentum(rsiResult?.rsi ?? null, week52.closes, relativeVolume)
+          : null;
         return {
           ...stock,
           quote,
@@ -68,6 +79,10 @@ router.get('/', async (req: Request, res: Response) => {
           ma200: dmaResult?.ma200 ?? null,
           ma50Trend: dmaResult?.ma50Trend ?? null,
           ma200Trend: dmaResult?.ma200Trend ?? null,
+          supportLevel: srResult?.support ?? null,
+          resistanceLevel: srResult?.resistance ?? null,
+          srSignal: srResult?.signal ?? null,
+          momentumScore,
         };
       } catch {
         return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false, week52High: null, week52Low: null, relativeVolume: null };

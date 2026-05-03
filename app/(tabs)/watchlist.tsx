@@ -1,38 +1,75 @@
+import { SkeletonListScreen } from "@/components/skeleton";
+import { Radius } from "@/constants/theme";
+import { useTheme } from "@/context/theme-context";
+import { useAddStock, useWatchlist } from "@/hooks/use-watchlist";
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TextInput,
-  TouchableOpacity,
-  RefreshControl,
-  SafeAreaView,
-  ActivityIndicator,
-  ScrollView,
-} from 'react-native';
-import { useMemo, useState, useEffect, useRef } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { useWatchlist, useAddStock } from '@/hooks/use-watchlist';
-import { watchlistApi, type WatchlistStock, type StockSearchResult } from '@/lib/api';
-import { useTheme } from '@/context/theme-context';
-import { Radius } from '@/constants/theme';
-import { SkeletonListScreen } from '@/components/skeleton';
+    watchlistApi,
+    type StockSearchResult,
+    type WatchlistStock,
+} from "@/lib/api";
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    FlatList,
+    Modal,
+    RefreshControl,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
+} from "react-native";
 
 export default function WatchlistScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [infoVisible, setInfoVisible] = useState(false);
 
-  const { data: stocks = [], isLoading, isError, error, refetch, isRefetching } = useWatchlist();
+  const {
+    data: stocks = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+  } = useWatchlist();
   const { mutate: addStock } = useAddStock();
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Watchlist</Text>
-        <Text style={styles.subtitle}>{stocks.length} stock{stocks.length !== 1 ? 's' : ''} monitored</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Watchlist</Text>
+          <TouchableOpacity
+            onPress={() => setInfoVisible(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Indicator explanations"
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="information-circle-outline"
+              size={20}
+              color={colors.textMuted}
+            />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtitle}>
+          {stocks.length} stock{stocks.length !== 1 ? "s" : ""} monitored
+        </Text>
       </View>
+
+      <IndicatorInfoModal
+        visible={infoVisible}
+        onClose={() => setInfoVisible(false)}
+        colors={colors}
+        styles={styles}
+      />
 
       {/* Search + add input */}
       <StockSearchInput
@@ -45,7 +82,9 @@ export default function WatchlistScreen() {
       {isError && (
         <View style={styles.errorCard}>
           <Text style={styles.errorText}>
-            {error instanceof Error ? error.message : 'Failed to load watchlist'}
+            {error instanceof Error
+              ? error.message
+              : "Failed to load watchlist"}
           </Text>
           <TouchableOpacity onPress={() => refetch()}>
             <Text style={styles.retryText}>Retry</Text>
@@ -60,7 +99,8 @@ export default function WatchlistScreen() {
           <Ionicons name="star-outline" size={56} color={colors.border} />
           <Text style={styles.emptyTitle}>No stocks yet</Text>
           <Text style={styles.emptyText}>
-            Add stock symbols above to start monitoring for RSI and 52-week alerts.
+            Add stock symbols above to start monitoring for RSI and 52-week
+            alerts.
           </Text>
         </View>
       ) : (
@@ -68,7 +108,11 @@ export default function WatchlistScreen() {
           data={stocks}
           keyExtractor={(item) => item.symbol}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={colors.primary}
+            />
           }
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
@@ -80,6 +124,141 @@ export default function WatchlistScreen() {
   );
 }
 
+const INDICATORS = [
+  {
+    label: "RSI",
+    name: "Relative Strength Index",
+    color: "#A78BFA",
+    explanation:
+      "Measures how overbought or oversold a stock is on a scale of 0–100. Calculated as 100 − (100 ÷ (1 + avg gain / avg loss)) over 14 days. Below 30 = oversold (green), above 70 = overbought (red). The arrow shows whether RSI is trending up or down.",
+  },
+  {
+    label: "52W %",
+    name: "52-Week Position",
+    color: "#60A5FA",
+    explanation:
+      "Shows where the current price sits within its 52-week range. Formula: (price − 52W low) ÷ (52W high − 52W low) × 100. Near 0% means close to yearly low (green — potential buy zone), near 100% means close to yearly high (red — extended).",
+  },
+  {
+    label: "V",
+    name: "Relative Volume",
+    color: "#34D399",
+    explanation:
+      "Compares today's trading volume to the stock's average daily volume. A value of 1.5x means 50% more volume than usual (green — high interest). Below 0.8x means unusually quiet trading (red). Shown as a multiplier (e.g. 2.1x).",
+  },
+  {
+    label: "S▲ / R▼",
+    name: "Support & Resistance Signal",
+    color: "#F59E0B",
+    explanation:
+      "Detects if the stock is trading near a key support or resistance level based on historical price clusters. S▲ (green) means the price is near support — a level where buyers have previously stepped in. R▼ (red) means the price is near resistance — a level where selling pressure has historically appeared.",
+  },
+  {
+    label: "M",
+    name: "Momentum Score",
+    color: "#F97316",
+    explanation:
+      "A composite score from 0–100 combining RSI, price vs moving averages, and volume trend. Above 70 = strong bullish momentum (green), 40–70 = neutral (yellow), below 40 = weak or bearish momentum (red).",
+  },
+  {
+    label: "50 / 200",
+    name: "Moving Average Trend",
+    color: "#94A3B8",
+    explanation:
+      "Shows whether the stock is trading above (green) or below (red) its 50-day and 200-day simple moving averages. 50-day reflects medium-term trend; 200-day reflects long-term trend. Both green is a bullish sign; both red is bearish.",
+  },
+];
+
+function IndicatorInfoModal({
+  visible,
+  onClose,
+  colors,
+  styles,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  colors: ReturnType<typeof useTheme>["colors"];
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.modalOverlay} />
+      </TouchableWithoutFeedback>
+      <View
+        style={[
+          styles.modalSheet,
+          { backgroundColor: colors.background, borderColor: colors.border },
+        ]}
+      >
+        <View style={styles.modalHandle} />
+        <View style={styles.modalHeader}>
+          <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+            Indicator Guide
+          </Text>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Close"
+          >
+            <Ionicons name="close" size={22} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView
+          contentContainerStyle={styles.modalContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {INDICATORS.map((ind) => (
+            <View
+              key={ind.label}
+              style={[
+                styles.indicatorCard,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.indicatorCardHeader}>
+                <View
+                  style={[
+                    styles.indicatorBadge,
+                    { backgroundColor: ind.color + "22" },
+                  ]}
+                >
+                  <Text
+                    style={[styles.indicatorBadgeText, { color: ind.color }]}
+                  >
+                    {ind.label}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.indicatorName,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  {ind.name}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.indicatorExplanation,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {ind.explanation}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 function StockSearchInput({
   watchedSymbols,
   onAdd,
@@ -88,18 +267,18 @@ function StockSearchInput({
 }: {
   watchedSymbols: string[];
   onAdd: (symbol: string, company_name: string) => void;
-  colors: ReturnType<typeof useTheme>['colors'];
+  colors: ReturnType<typeof useTheme>["colors"];
   styles: ReturnType<typeof createStyles>;
 }) {
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
-      setDebouncedQuery('');
+      setDebouncedQuery("");
       setOpen(false);
       return;
     }
@@ -113,7 +292,7 @@ function StockSearchInput({
   }, [query]);
 
   const { data: results = [], isFetching } = useQuery({
-    queryKey: ['stockSearch', debouncedQuery],
+    queryKey: ["stockSearch", debouncedQuery],
     queryFn: () => watchlistApi.search(debouncedQuery),
     enabled: debouncedQuery.length >= 1,
     staleTime: 30_000,
@@ -121,8 +300,8 @@ function StockSearchInput({
 
   const handleSelect = (item: StockSearchResult) => {
     onAdd(item.symbol, item.description);
-    setQuery('');
-    setDebouncedQuery('');
+    setQuery("");
+    setDebouncedQuery("");
     setOpen(false);
   };
 
@@ -150,13 +329,17 @@ function StockSearchInput({
           accessibilityHint="Type a symbol or company name to find and add stocks"
         />
         {isFetching && (
-          <ActivityIndicator size="small" color={colors.primary} style={styles.searchSpinner} />
+          <ActivityIndicator
+            size="small"
+            color={colors.primary}
+            style={styles.searchSpinner}
+          />
         )}
         {query.length > 0 && !isFetching && (
           <TouchableOpacity
             onPress={() => {
-              setQuery('');
-              setDebouncedQuery('');
+              setQuery("");
+              setDebouncedQuery("");
               setOpen(false);
             }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -168,9 +351,16 @@ function StockSearchInput({
       </View>
 
       {showDropdown && (
-        <View style={[styles.dropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.dropdown,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
           {results.length === 0 && !isFetching ? (
-            <Text style={styles.dropdownEmpty}>No results for &ldquo;{debouncedQuery}&rdquo;</Text>
+            <Text style={styles.dropdownEmpty}>
+              No results for &ldquo;{debouncedQuery}&rdquo;
+            </Text>
           ) : (
             <ScrollView
               keyboardShouldPersistTaps="handled"
@@ -182,7 +372,10 @@ function StockSearchInput({
                 return (
                   <TouchableOpacity
                     key={item.symbol}
-                    style={[styles.dropdownRow, alreadyAdded && styles.dropdownRowDisabled]}
+                    style={[
+                      styles.dropdownRow,
+                      alreadyAdded && styles.dropdownRowDisabled,
+                    ]}
                     onPress={() => !alreadyAdded && handleSelect(item)}
                     disabled={alreadyAdded}
                     accessibilityRole="button"
@@ -200,9 +393,17 @@ function StockSearchInput({
                       </Text>
                     </View>
                     {alreadyAdded ? (
-                      <Ionicons name="checkmark-circle" size={20} color={colors.positive} />
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={colors.positive}
+                      />
                     ) : (
-                      <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={20}
+                        color={colors.primary}
+                      />
                     )}
                   </TouchableOpacity>
                 );
@@ -220,18 +421,36 @@ function calc52WeekPercent(price: number, low: number, high: number): number {
   return Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100));
 }
 
-function get52WeekColor(pct: number, positive: string, negative: string): string {
+function get52WeekColor(
+  pct: number,
+  positive: string,
+  negative: string,
+): string {
   if (pct <= 30) return positive;
-  if (pct <= 70) return '#F59E0B';
+  if (pct <= 70) return "#F59E0B";
   return negative;
 }
 
-function getVolumeColor(relVol: number, positive: string, negative: string, muted: string): string {
+function getMomentumColor(
+  score: number,
+  positive: string,
+  negative: string,
+): string {
+  if (score >= 70) return positive;
+  if (score >= 40) return "#F59E0B";
+  return negative;
+}
+
+function getVolumeColor(
+  relVol: number,
+  positive: string,
+  negative: string,
+  muted: string,
+): string {
   if (relVol > 1.5) return positive;
   if (relVol < 0.8) return negative;
   return muted;
 }
-
 
 function WatchlistRow({
   stock,
@@ -239,7 +458,7 @@ function WatchlistRow({
   styles,
 }: {
   stock: WatchlistStock;
-  colors: ReturnType<typeof useTheme>['colors'];
+  colors: ReturnType<typeof useTheme>["colors"];
   styles: ReturnType<typeof createStyles>;
 }) {
   const quote = stock.quote;
@@ -252,12 +471,14 @@ function WatchlistRow({
       : colors.textMuted;
 
   const show52Week =
-    quote != null &&
-    stock.week52High != null &&
-    stock.week52Low != null;
+    quote != null && stock.week52High != null && stock.week52Low != null;
 
   const pct52 = show52Week
-    ? calc52WeekPercent(quote!.currentPrice, stock.week52Low!, stock.week52High!)
+    ? calc52WeekPercent(
+        quote!.currentPrice,
+        stock.week52Low!,
+        stock.week52High!,
+      )
     : null;
 
   return (
@@ -284,54 +505,143 @@ function WatchlistRow({
               {(stock.ma50Trend != null || stock.ma200Trend != null) && (
                 <View style={styles.maTrendWrap}>
                   <Text style={styles.maTrendText}>
-                    <Text style={{ color: stock.ma50Trend === 'green' ? colors.positive : stock.ma50Trend === 'red' ? colors.negative : colors.textMuted }}>50</Text>
+                    <Text
+                      style={{
+                        color:
+                          stock.ma50Trend === "green"
+                            ? colors.positive
+                            : stock.ma50Trend === "red"
+                              ? colors.negative
+                              : colors.textMuted,
+                      }}
+                    >
+                      50
+                    </Text>
                     <Text style={{ color: colors.textMuted }}>/</Text>
-                    <Text style={{ color: stock.ma200Trend === 'green' ? colors.positive : stock.ma200Trend === 'red' ? colors.negative : colors.textMuted }}>200</Text>
+                    <Text
+                      style={{
+                        color:
+                          stock.ma200Trend === "green"
+                            ? colors.positive
+                            : stock.ma200Trend === "red"
+                              ? colors.negative
+                              : colors.textMuted,
+                      }}
+                    >
+                      200
+                    </Text>
                   </Text>
                 </View>
               )}
-              <Text style={styles.priceText}>${quote.currentPrice.toFixed(2)}</Text>
+              <Text style={styles.priceText}>
+                ${quote.currentPrice.toFixed(2)}
+              </Text>
             </View>
           ) : (
             <Text style={styles.noData}>Loading...</Text>
           )}
           {quote && (
             <Text style={[styles.changeText, { color: changeColor }]}>
-              {isPositive ? '+' : ''}{(quote.changePercent ?? 0).toFixed(2)}%
+              {isPositive ? "+" : ""}
+              {(quote.changePercent ?? 0).toFixed(2)}%
             </Text>
           )}
-          {(stock.rsi != null || pct52 != null || stock.relativeVolume !== undefined) && (
+          {(stock.rsi != null ||
+            pct52 != null ||
+            stock.relativeVolume !== undefined) && (
             <View style={styles.rsiRow}>
               {pct52 != null && (
                 <Text style={styles.rsiText}>
-                  <Text style={{ color: '#ffffff' }}>52W </Text>
-                  <Text style={{ color: get52WeekColor(pct52, colors.positive, colors.negative) }}>{pct52.toFixed(0)}%</Text>
+                  <Text style={{ color: "#ffffff" }}>52W </Text>
+                  <Text
+                    style={{
+                      color: get52WeekColor(
+                        pct52,
+                        colors.positive,
+                        colors.negative,
+                      ),
+                    }}
+                  >
+                    {pct52.toFixed(0)}%
+                  </Text>
                 </Text>
               )}
               {stock.rsi != null && (
                 <View style={styles.rsiInlineRow}>
                   <Text style={styles.rsiText}>
-                    <Text style={{ color: '#ffffff' }}>RSI </Text>
-                    <Text style={{ color: rsiColor }}>{stock.rsi.toFixed(1)}</Text>
+                    <Text style={{ color: "#ffffff" }}>RSI </Text>
+                    <Text style={{ color: rsiColor }}>
+                      {stock.rsi.toFixed(1)}
+                    </Text>
                   </Text>
-                  {stock.rsiTrend === 'up' && (
-                    <Ionicons name="arrow-up" size={11} color={colors.positive} style={styles.rsiInlineArrow} />
+                  {stock.rsiTrend === "up" && (
+                    <Ionicons
+                      name="arrow-up"
+                      size={11}
+                      color={colors.positive}
+                      style={styles.rsiInlineArrow}
+                    />
                   )}
-                  {stock.rsiTrend === 'down' && (
-                    <Ionicons name="arrow-down" size={11} color={colors.negative} style={styles.rsiInlineArrow} />
+                  {stock.rsiTrend === "down" && (
+                    <Ionicons
+                      name="arrow-down"
+                      size={11}
+                      color={colors.negative}
+                      style={styles.rsiInlineArrow}
+                    />
                   )}
                 </View>
               )}
               {stock.relativeVolume !== undefined && (
                 <Text style={styles.rsiText}>
-                  <Text style={{ color: '#ffffff' }}>V </Text>
+                  <Text style={{ color: "#ffffff" }}>V </Text>
                   {stock.relativeVolume != null ? (
-                    <Text style={{ color: getVolumeColor(stock.relativeVolume, colors.positive, colors.negative, colors.textMuted) }}>
+                    <Text
+                      style={{
+                        color: getVolumeColor(
+                          stock.relativeVolume,
+                          colors.positive,
+                          colors.negative,
+                          colors.textMuted,
+                        ),
+                      }}
+                    >
                       {stock.relativeVolume.toFixed(1)}x
                     </Text>
                   ) : (
                     <Text style={{ color: colors.textMuted }}>--</Text>
                   )}
+                </Text>
+              )}
+              {stock.srSignal != null && (
+                <Text
+                  style={[
+                    styles.rsiText,
+                    {
+                      color:
+                        stock.srSignal === "near_support"
+                          ? colors.positive
+                          : colors.negative,
+                    },
+                  ]}
+                >
+                  {stock.srSignal === "near_support" ? "S▲" : "R▼"}
+                </Text>
+              )}
+              {stock.momentumScore != null && (
+                <Text style={styles.rsiText}>
+                  <Text style={{ color: "#ffffff" }}>M </Text>
+                  <Text
+                    style={{
+                      color: getMomentumColor(
+                        stock.momentumScore,
+                        colors.positive,
+                        colors.negative,
+                      ),
+                    }}
+                  >
+                    {stock.momentumScore}
+                  </Text>
                 </Text>
               )}
             </View>
@@ -342,13 +652,64 @@ function WatchlistRow({
   );
 }
 
-function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
 
     header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-    title: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
+    titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    title: { fontSize: 26, fontWeight: "800", color: colors.textPrimary },
     subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    modalSheet: {
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      paddingBottom: 32,
+      maxHeight: "78%",
+    },
+    modalHandle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      alignSelf: "center",
+      marginTop: 10,
+      marginBottom: 4,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+    },
+    modalTitle: { fontSize: 18, fontWeight: "700" },
+    modalContent: { paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
+    indicatorCard: {
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      padding: 14,
+      gap: 8,
+    },
+    indicatorCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    indicatorBadge: {
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    indicatorBadgeText: { fontSize: 12, fontWeight: "700" },
+    indicatorName: { fontSize: 13, fontWeight: "600" },
+    indicatorExplanation: { fontSize: 13, lineHeight: 19 },
 
     searchContainer: {
       paddingHorizontal: 20,
@@ -356,8 +717,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       zIndex: 10,
     },
     addRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       backgroundColor: colors.surface,
       borderRadius: Radius.full,
       paddingHorizontal: 14,
@@ -376,17 +737,17 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       marginTop: 6,
       borderRadius: Radius.md,
       borderWidth: 1,
-      overflow: 'hidden',
+      overflow: "hidden",
     },
     dropdownEmpty: {
       padding: 16,
       fontSize: 13,
       color: colors.textMuted,
-      textAlign: 'center',
+      textAlign: "center",
     },
     dropdownRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       paddingHorizontal: 16,
       paddingVertical: 12,
       borderBottomWidth: 1,
@@ -395,30 +756,34 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     },
     dropdownRowDisabled: { opacity: 0.5 },
     dropdownInfo: { flex: 1 },
-    dropdownSymbol: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+    dropdownSymbol: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.textPrimary,
+    },
     dropdownName: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
 
     errorCard: {
       marginHorizontal: 20,
       marginBottom: 8,
-      backgroundColor: '#FEF2F2',
+      backgroundColor: "#FEF2F2",
       borderRadius: Radius.md,
       padding: 12,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      flexDirection: "row",
+      justifyContent: "space-between",
     },
     errorText: { color: colors.negative, fontSize: 13 },
-    retryText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+    retryText: { color: colors.primary, fontWeight: "700", fontSize: 13 },
 
     empty: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
       paddingHorizontal: 40,
     },
     emptyTitle: {
       fontSize: 18,
-      fontWeight: '700',
+      fontWeight: "700",
       color: colors.textPrimary,
       marginTop: 16,
       marginBottom: 8,
@@ -426,21 +791,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
     emptyText: {
       fontSize: 14,
       color: colors.textSecondary,
-      textAlign: 'center',
+      textAlign: "center",
       lineHeight: 20,
     },
 
     list: { paddingHorizontal: 20, paddingBottom: 20 },
 
     row: {
-      flexDirection: 'column',
+      flexDirection: "column",
       paddingVertical: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     rowTop: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       gap: 12,
     },
     logoWrap: {
@@ -448,23 +813,23 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       height: 44,
       borderRadius: 22,
       backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
     },
-    logoText: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+    logoText: { fontSize: 13, fontWeight: "700", color: colors.textPrimary },
     rowInfo: { flex: 1 },
-    rowSymbol: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+    rowSymbol: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
     rowName: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-    rowPrice: { alignItems: 'flex-end' },
-    priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    priceText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-    maTrendWrap: { alignItems: 'center', justifyContent: 'center' },
-    maTrendText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
-    changeText: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-    rsiText: { fontSize: 11, fontWeight: '600' },
-    rsiInlineRow: { flexDirection: 'row', alignItems: 'center' },
+    rowPrice: { alignItems: "flex-end" },
+    priceRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    priceText: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
+    maTrendWrap: { alignItems: "center", justifyContent: "center" },
+    maTrendText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
+    changeText: { fontSize: 12, fontWeight: "600", marginTop: 2 },
+    rsiText: { fontSize: 11, fontWeight: "600" },
+    rsiInlineRow: { flexDirection: "row", alignItems: "center" },
     rsiInlineArrow: { marginLeft: 2 },
-    rsiRow: { flexDirection: 'row', gap: 6, marginTop: 3 },
+    rsiRow: { flexDirection: "row", gap: 6, marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
   });
 }
