@@ -33,6 +33,7 @@ yarn-error.*
 # local env files
 .env*.local
 .env
+/backend/.env
 
 # EAS build config (contains hardcoded secrets)
 eas.json

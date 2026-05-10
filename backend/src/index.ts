@@ -7,6 +7,8 @@ import alertsRouter from './routes/alerts';
 import marketRouter from './routes/market';
 import pushTokenRouter from './routes/push-token';
 import { startScheduler } from './services/scheduler.service';
+import { POPULAR_SYMBOLS, getCompanyProfile } from './services/finnhub.service';
+import { getUnusualVolumeStocks } from './services/polygon.service';
 
 dotenv.config();
 
@@ -30,4 +32,10 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Stockvest backend running on http://localhost:${PORT}`);
   startScheduler();
+  Promise.allSettled(POPULAR_SYMBOLS.map((s) => getCompanyProfile(s))).then(() => {
+    console.log('[startup] Company profile cache pre-warmed');
+    return getUnusualVolumeStocks();
+  }).then(() => {
+    console.log('[startup] Unusual volume cache pre-warmed');
+  });
 });

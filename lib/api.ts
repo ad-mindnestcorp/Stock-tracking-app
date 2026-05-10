@@ -141,6 +141,32 @@ export interface StockSearchResult {
   type: string;
 }
 
+export interface IndexCardData {
+  symbol: string;
+  label: string;
+  currentPrice: number | null;
+  changePercent: number | null;
+  sparkline: number[];
+}
+
+export interface SectorData {
+  sector: string;
+  etf: string;
+  changePercent: number | null;
+  currentPrice: number | null;
+}
+
+export interface UnusualVolumeStock {
+  ticker: string;
+  name?: string;
+  logo?: string;
+  currentPrice: number;
+  changePercent: number;
+  volume: number;
+  avgVolume: number;
+  volumeRatio: number;
+}
+
 // ─── Market ──────────────────────────────────────────────────────────────────
 
 function marketSymbolPath(symbol: string): string {
@@ -155,6 +181,9 @@ export const marketApi = {
     request<StockDetail>(`/api/market/detail/${marketSymbolPath(symbol)}`),
   getCandles: (symbol: string, range: '1D' | '1W' | '1M' | '3M' | '6M' | '1Y') =>
     request<CandleData>(`/api/market/candles/${marketSymbolPath(symbol)}?range=${range}`),
+  getIndexes: () => request<IndexCardData[]>('/api/market/indexes'),
+  getSectors: () => request<SectorData[]>('/api/market/sectors'),
+  getUnusualVolume: () => request<UnusualVolumeStock[]>('/api/market/unusual-volume'),
 };
 
 // ─── Watchlist ────────────────────────────────────────────────────────────────

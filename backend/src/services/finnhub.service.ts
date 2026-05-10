@@ -5,7 +5,16 @@ const YahooFinanceClass = require('yahoo-finance2').default as new (opts?: Recor
     symbol: string,
     opts: { period1: Date; period2: Date; interval: string }
   ) => Promise<Array<{ close: number; high: number; low: number; volume?: number }>>;
-  quote: (symbol: string) => Promise<{ regularMarketVolume?: number }>;
+  quote: (symbol: string) => Promise<{
+    regularMarketVolume?: number;
+    regularMarketPrice?: number;
+    regularMarketChange?: number;
+    regularMarketChangePercent?: number;
+    regularMarketPreviousClose?: number;
+    regularMarketOpen?: number;
+    regularMarketDayHigh?: number;
+    regularMarketDayLow?: number;
+  }>;
 };
 
 const BASE_URL = 'https://finnhub.io/api/v1';
@@ -146,6 +155,43 @@ export async function getQuote(symbol: string): Promise<StockQuote> {
   return quote;
 }
 
+/**
+ * Fetch a real-time quote from Yahoo Finance.
+ * Used as a fallback for symbols Finnhub free tier can't price (e.g. ^VIX).
+ * yahoo-finance2 returns regularMarketChangePercent as a plain percentage (e.g. 0.83 for +0.83%).
+ */
+export async function getYahooQuote(
+  yahooSymbol: string,
+  displaySymbol: string
+): Promise<StockQuote | null> {
+  const key = `quote:yahoo:${yahooSymbol}`;
+  const cached = getCached<StockQuote>(key);
+  if (cached) return cached;
+
+  try {
+    const r = await getYF().quote(yahooSymbol);
+    const price = r?.regularMarketPrice;
+    if (price == null || price === 0) return null;
+
+    const quote: StockQuote = {
+      symbol: displaySymbol,
+      currentPrice: price,
+      change: r.regularMarketChange ?? 0,
+      changePercent: r.regularMarketChangePercent ?? 0,
+      high: r.regularMarketDayHigh ?? 0,
+      low: r.regularMarketDayLow ?? 0,
+      open: r.regularMarketOpen ?? 0,
+      previousClose: r.regularMarketPreviousClose ?? 0,
+      volume: r.regularMarketVolume,
+    };
+    setCached(key, quote, TTL.QUOTE);
+    return quote;
+  } catch (err) {
+    console.warn(`[yahoo:quote] ${yahooSymbol} — failed:`, err);
+    return null;
+  }
+}
+
 /** Fetch daily candles for the past N days (cached 10 min) */
 export async function getDailyCandles(symbol: string, days = 365): Promise<CandleData | null> {
   const key = `candles:daily:${symbol}:${days}`;
@@ -234,6 +280,37 @@ export async function getCompanyProfile(symbol: string): Promise<CompanyProfile 
     };
     setCached(key, profile, TTL.PROFILE);
     return profile;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the last N daily close prices from Yahoo Finance.
+ * Used for sparklines on symbols where Finnhub free tier blocks /stock/candle
+ * (e.g. ETFs and BTC-USD). Cached 10 min.
+ */
+export async function getYahooDailyCloses(
+  yahooSymbol: string,
+  days = 30
+): Promise<number[] | null> {
+  const key = `yahoo:closes:${yahooSymbol}:${days}`;
+  const cached = getCached<number[]>(key);
+  if (cached) return cached;
+
+  try {
+    const period1 = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const period2 = new Date();
+    const rows = await getYF().historical(yahooSymbol, {
+      period1,
+      period2,
+      interval: '1d',
+    });
+    if (!rows || rows.length === 0) return null;
+    const closes = rows.map((r) => r.close).filter((c) => c != null);
+    if (closes.length === 0) return null;
+    setCached(key, closes, TTL.CANDLES_DAILY);
+    return closes;
   } catch {
     return null;
   }
