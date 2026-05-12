@@ -23,7 +23,7 @@ const API_KEY = process.env.FINNHUB_API_KEY ?? '';
 /** Lazy singleton — created once to suppress the deprecation notice every call */
 let _yf: InstanceType<typeof YahooFinanceClass> | null = null;
 function getYF(): InstanceType<typeof YahooFinanceClass> {
-  if (!_yf) _yf = new YahooFinanceClass({ suppressNotices: ['ripHistorical'] });
+  if (!_yf) _yf = new YahooFinanceClass({ suppressNotices: ['ripHistorical'], validation: { logErrors: false } });
   return _yf;
 }
 
@@ -102,15 +102,11 @@ export interface Week52Data {
 async function getVolumeFromYahoo(symbol: string): Promise<number | undefined> {
   const key = `volume:yahoo:${symbol}`;
   const cached = getCached<number>(key);
-  if (cached !== null) {
-    console.log(`[yahoo:volume] ${symbol} — cache hit: ${cached}`);
-    return cached;
-  }
+  if (cached !== null) return cached;
 
   try {
     const result = await getYF().quote(symbol);
     const volume = result?.regularMarketVolume;
-    console.log(`[yahoo:volume] ${symbol} — regularMarketVolume=${volume}`);
     if (volume != null) setCached(key, volume, TTL.VOLUME);
     return volume;
   } catch (err) {
@@ -130,14 +126,9 @@ export async function getQuote(symbol: string): Promise<StockQuote> {
     timeout: 8000,
   });
   const d = res.data;
-  console.log(`[finnhub:quote] ${symbol} raw — c=${d.c} v=${d.v} t=${d.t} status=${res.status}`);
-
   let volume: number | undefined = d.v != null && d.v > 0 ? d.v : undefined;
   if (volume == null) {
-    console.log(`[finnhub:quote] ${symbol} — volume missing from Finnhub, falling back to Yahoo Finance`);
     volume = await getVolumeFromYahoo(symbol);
-  } else {
-    console.log(`[finnhub:quote] ${symbol} — volume from Finnhub: ${volume}`);
   }
 
   const quote: StockQuote = {
@@ -364,7 +355,6 @@ export async function getWeek52Data(symbol: string): Promise<Week52Data | null> 
     const avgVolume = last30Vols.length > 0
       ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
       : undefined;
-    console.log(`[week52:finnhub] ${symbol} — candle bars=${candles.close.length} last30Vols count=${last30Vols.length} avgVolume=${avgVolume}`);
     result = {
       high52w: Math.max(...candles.high),
       low52w:  Math.min(...candles.low),
@@ -374,13 +364,7 @@ export async function getWeek52Data(symbol: string): Promise<Week52Data | null> 
       recentLows:  candles.low.slice(-30),
     };
   } else {
-    console.log(`[week52:yahoo] ${symbol} — Finnhub candles unavailable, falling back to Yahoo Finance`);
     result = await getDailyDataFromYahoo(symbol);
-    if (result) {
-      console.log(`[week52:yahoo] ${symbol} — avgVolume=${result.avgVolume} closes count=${result.closes.length}`);
-    } else {
-      console.log(`[week52:yahoo] ${symbol} — Yahoo Finance also returned null`);
-    }
   }
 
   if (!result) return null;
