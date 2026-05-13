@@ -437,7 +437,7 @@ export async function searchSymbols(query: string): Promise<SymbolSearchResult[]
 
 /** Popular US stocks used for the Home screen trending/gainers/losers list */
 export const POPULAR_SYMBOLS = [
-  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK.B',
+  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA',
   'JPM', 'V', 'UNH', 'XOM', 'JNJ', 'WMT', 'MA', 'PG', 'HD',
   'CVX', 'MRK', 'ABBV', 'LLY', 'PFE', 'BAC', 'KO', 'PEP',
   'AVGO', 'COST', 'MCD', 'TMO', 'CSCO',

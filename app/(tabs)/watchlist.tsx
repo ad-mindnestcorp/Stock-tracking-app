@@ -369,11 +369,11 @@ function StockSearchInput({
               style={{ maxHeight: 220 }}
               showsVerticalScrollIndicator={false}
             >
-              {results.map((item) => {
+              {results.map((item, index) => {
                 const alreadyAdded = watchedSymbols.includes(item.symbol);
                 return (
                   <TouchableOpacity
-                    key={item.symbol}
+                    key={`${item.symbol}-${index}`}
                     style={[
                       styles.dropdownRow,
                       alreadyAdded && styles.dropdownRowDisabled,
