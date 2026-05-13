@@ -6,6 +6,7 @@ import stocksRouter from './routes/stocks';
 import alertsRouter from './routes/alerts';
 import marketRouter from './routes/market';
 import pushTokenRouter from './routes/push-token';
+import watchlistsRouter from './routes/watchlists';
 import { startScheduler } from './services/scheduler.service';
 import { POPULAR_SYMBOLS, getCompanyProfile } from './services/finnhub.service';
 import { getUnusualVolumeStocks } from './services/polygon.service';
@@ -20,6 +21,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/stocks', stocksRouter);
+app.use('/api/watchlists', watchlistsRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/market', marketRouter);
 app.use('/api/push-token', pushTokenRouter);

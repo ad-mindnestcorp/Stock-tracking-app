@@ -72,3 +72,43 @@ CREATE POLICY "alerts_log: update own"   ON alerts_log  FOR UPDATE USING (auth.u
 CREATE POLICY "push_tokens: select own"  ON push_tokens FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "push_tokens: insert own"  ON push_tokens FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "push_tokens: delete own"  ON push_tokens FOR DELETE USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────
+-- Multi-watchlist support
+-- ─────────────────────────────────────────────
+
+-- watchlists: named collections of stocks per user
+CREATE TABLE IF NOT EXISTS watchlists (
+  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name        TEXT        NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, name)
+);
+
+-- watchlist_stocks: junction table — a symbol can belong to multiple watchlists
+CREATE TABLE IF NOT EXISTS watchlist_stocks (
+  id            UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  watchlist_id  UUID        NOT NULL REFERENCES watchlists(id) ON DELETE CASCADE,
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  symbol        TEXT        NOT NULL,
+  company_name  TEXT,
+  added_at      TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(watchlist_id, symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_watchlists_user_id         ON watchlists(user_id);
+CREATE INDEX IF NOT EXISTS idx_watchlist_stocks_watchlist  ON watchlist_stocks(watchlist_id);
+CREATE INDEX IF NOT EXISTS idx_watchlist_stocks_user_id   ON watchlist_stocks(user_id);
+
+ALTER TABLE watchlists       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE watchlist_stocks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "watchlists: select own"  ON watchlists FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "watchlists: insert own"  ON watchlists FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "watchlists: update own"  ON watchlists FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "watchlists: delete own"  ON watchlists FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY "watchlist_stocks: select own"  ON watchlist_stocks FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "watchlist_stocks: insert own"  ON watchlist_stocks FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "watchlist_stocks: delete own"  ON watchlist_stocks FOR DELETE USING (auth.uid() = user_id);

@@ -142,6 +142,13 @@ export interface StockSearchResult {
   type: string;
 }
 
+export interface Watchlist {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface IndexCardData {
   symbol: string;
   label: string;
@@ -200,6 +207,37 @@ export const watchlistApi = {
     }),
   remove: (symbol: string) =>
     request<{ message: string }>(`/api/stocks/${symbol}`, { method: 'DELETE' }),
+};
+
+// ─── Multi-Watchlists ─────────────────────────────────────────────────────────
+
+export const watchlistsApi = {
+  getAll: () => request<Watchlist[]>('/api/watchlists'),
+  create: (name: string) =>
+    request<Watchlist>('/api/watchlists', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  rename: (id: string, name: string) =>
+    request<Watchlist>(`/api/watchlists/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  delete: (id: string) =>
+    request<{ message: string }>(`/api/watchlists/${id}`, { method: 'DELETE' }),
+  getStocks: (id: string) =>
+    request<WatchlistStock[]>(`/api/watchlists/${id}/stocks`),
+  addStock: (watchlistId: string, symbol: string, company_name?: string) =>
+    request<WatchlistStock>(`/api/watchlists/${watchlistId}/stocks`, {
+      method: 'POST',
+      body: JSON.stringify({ symbol, company_name }),
+    }),
+  removeStock: (watchlistId: string, symbol: string) =>
+    request<{ message: string }>(`/api/watchlists/${watchlistId}/stocks/${symbol}`, {
+      method: 'DELETE',
+    }),
+  search: (query: string) =>
+    request<StockSearchResult[]>(`/api/stocks/search?q=${encodeURIComponent(query)}`),
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
