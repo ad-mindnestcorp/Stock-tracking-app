@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { getQuote, getWeek52Data, searchSymbols } from '../services/finnhub.service';
+import { getQuote, getWeek52Data, searchSymbols, getCompanyProfile } from '../services/finnhub.service';
 import { calculateRSI } from '../services/rsi.service';
 import { calculateDMA } from '../services/dma.service';
 import { calculateSupportResistance } from '../services/support-resistance.service';
@@ -44,9 +44,10 @@ router.get('/', async (req: Request, res: Response) => {
   const enriched = await Promise.all(
     (data ?? []).map(async (stock) => {
       try {
-        const [quote, week52] = await Promise.all([
+        const [quote, week52, profile] = await Promise.all([
           getQuote(stock.symbol),
           getWeek52Data(stock.symbol),
+          getCompanyProfile(stock.symbol),
         ]);
         const rsiResult = week52 ? calculateRSI(week52.closes) : null;
         const dmaResult = week52 && quote ? calculateDMA(week52.closes, quote.currentPrice) : null;
@@ -67,7 +68,7 @@ router.get('/', async (req: Request, res: Response) => {
           : null;
         return {
           ...stock,
-          quote,
+          quote: quote ? { ...quote, profile: profile ?? null } : null,
           rsi: rsiResult?.rsi ?? null,
           isOverbought: rsiResult?.isOverbought ?? false,
           isOversold: rsiResult?.isOversold ?? false,

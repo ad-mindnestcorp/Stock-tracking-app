@@ -18,7 +18,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
 
   // null means "follow the device"; true/false means manual override
-  const [manualDark, setManualDark] = useState<boolean | null>(null);
+  const [manualDark, setManualDark] = useState<boolean | null>(true);
 
   const isDark = manualDark !== null ? manualDark : systemScheme === 'dark';
   const colors = isDark ? DarkColors : LightColors;

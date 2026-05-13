@@ -56,20 +56,20 @@ export const LightColors = {
 export const DarkColors: AppColors = {
   primary: '#CCFF00',
   onPrimary: '#1A1A2E',     // stays dark — contrast on lime
-  background: '#0F0F18',    // very dark navy
-  surface: '#1A1A2E',       // slightly lighter dark (was `dark` in light mode)
-  cardBg: '#1E1E2E',
-  dark: '#1A1A2E',          // retained for dark-card elements (MarketSummary etc.)
-  textPrimary: '#F0F0F0',
-  textSecondary: '#9CA3AF',
-  textMuted: '#6B7280',
-  positive: '#22C55E',
-  negative: '#EF4444',
+  background: '#0a0a0a',
+  surface: '#161616',
+  cardBg: '#161616',
+  dark: '#1e1e1e',
+  textPrimary: '#ffffff',
+  textSecondary: '#888888',
+  textMuted: '#444444',
+  positive: '#26d98e',
+  negative: '#ff4d4d',
   warning: '#F59E0B',
-  border: '#2D2D44',
-  tabBar: '#0A0A14',
+  border: '#2a2a2a',
+  tabBar: '#0a0a0a',
   tabBarActive: '#CCFF00',
-  tabBarInactive: '#6B7280',
+  tabBarInactive: '#555555',
 
   alert52wHigh: '#8B5CF6',
   alert52wLow: '#F59E0B',

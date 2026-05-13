@@ -103,6 +103,7 @@ export interface WatchlistStock {
   resistanceLevel?: number | null;
   srSignal?: 'near_support' | 'near_resistance' | null;
   momentumScore?: number | null;
+  sparkline?: number[];
 }
 
 export interface AlertLog {

@@ -1,3 +1,4 @@
+import LineChart from "@/components/line-chart";
 import { SkeletonListScreen } from "@/components/skeleton";
 import { Radius } from "@/constants/theme";
 import { useTheme } from "@/context/theme-context";
@@ -7,6 +8,7 @@ import {
     type StockSearchResult,
     type WatchlistStock,
 } from "@/lib/api";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -431,7 +433,7 @@ function get52WeekColor(
   return negative;
 }
 
-function getMomentumColor(
+function getMomentumScore(
   score: number,
   positive: string,
   negative: string,
@@ -468,7 +470,7 @@ function WatchlistRow({
     ? colors.negative
     : stock.isOversold
       ? colors.positive
-      : colors.textMuted;
+      : colors.textSecondary;
 
   const show52Week =
     quote != null && stock.week52High != null && stock.week52Low != null;
@@ -481,170 +483,248 @@ function WatchlistRow({
       )
     : null;
 
+  const sparkColor = isPositive ? colors.positive : colors.negative;
+
   return (
     <TouchableOpacity
-      style={styles.row}
+      style={styles.card}
       onPress={() => router.push(`/stock/${stock.symbol}`)}
-      activeOpacity={0.7}
+      activeOpacity={0.75}
     >
-      <View style={styles.rowTop}>
-        <View style={styles.logoWrap}>
-          <Text style={styles.logoText}>{stock.symbol.slice(0, 2)}</Text>
+      {/* Top row: logo + info | sparkline | price + star */}
+      <View style={styles.cardTop}>
+        {/* Left: logo + symbol + name */}
+        <View style={styles.cardLeft}>
+          <View style={styles.logoWrap}>
+            {stock.quote?.profile?.logo ? (
+              <Image
+                source={{ uri: stock.quote.profile.logo }}
+                style={styles.logoImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <Text style={styles.logoText}>{stock.symbol.slice(0, 4)}</Text>
+            )}
+          </View>
+          <View style={styles.rowInfo}>
+            <Text style={styles.rowSymbol}>{stock.symbol}</Text>
+            <Text style={styles.rowName} numberOfLines={1}>
+              {stock.company_name ?? stock.symbol}
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.rowInfo}>
-          <Text style={styles.rowSymbol}>{stock.symbol}</Text>
-          <Text style={styles.rowName} numberOfLines={1}>
-            {stock.company_name ?? stock.symbol}
-          </Text>
+        {/* Center: sparkline */}
+        <View style={styles.sparkWrap}>
+          {stock.sparkline && stock.sparkline.length >= 2 ? (
+            <LineChart
+              data={stock.sparkline}
+              width={80}
+              height={36}
+              color={sparkColor}
+              showGradient={false}
+            />
+          ) : (
+            <View style={{ width: 80, height: 36 }} />
+          )}
         </View>
 
-        <View style={styles.rowPrice}>
-          {quote ? (
-            <View style={styles.priceRow}>
-              {(stock.ma50Trend != null || stock.ma200Trend != null) && (
-                <View style={styles.maTrendWrap}>
-                  <Text style={styles.maTrendText}>
-                    <Text
-                      style={{
-                        color:
-                          stock.ma50Trend === "green"
-                            ? colors.positive
-                            : stock.ma50Trend === "red"
-                              ? colors.negative
-                              : colors.textMuted,
-                      }}
-                    >
-                      50
-                    </Text>
-                    <Text style={{ color: colors.textMuted }}>/</Text>
-                    <Text
-                      style={{
-                        color:
-                          stock.ma200Trend === "green"
-                            ? colors.positive
-                            : stock.ma200Trend === "red"
-                              ? colors.negative
-                              : colors.textMuted,
-                      }}
-                    >
-                      200
-                    </Text>
-                  </Text>
-                </View>
+        {/* Right: price + change + star */}
+        <View style={styles.cardRight}>
+          <View style={styles.starPriceRow}>
+            <View style={styles.priceBlock}>
+              {quote ? (
+                <Text style={styles.priceText}>
+                  ${quote.currentPrice.toFixed(2)}
+                </Text>
+              ) : (
+                <Text style={styles.noData}>—</Text>
               )}
-              <Text style={styles.priceText}>
-                ${quote.currentPrice.toFixed(2)}
+              {quote && (
+                <Text style={[styles.changeText, { color: changeColor }]}>
+                  {isPositive ? "+" : ""}
+                  {(quote.changePercent ?? 0).toFixed(2)}%
+                </Text>
+              )}
+            </View>
+            <Ionicons
+              name="star-outline"
+              size={16}
+              color={colors.textMuted}
+              style={styles.starIcon}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Indicator row: fixed 6 cells, always rendered for consistent spacing */}
+      <View style={styles.indicatorRow}>
+        {/* 50/200 */}
+        <View style={styles.indicatorCell}>
+          <Text style={styles.indicatorLabel}>MA</Text>
+          {stock.ma50Trend != null || stock.ma200Trend != null ? (
+            <View style={styles.indicatorValueInline}>
+              <Text
+                style={[
+                  styles.indicatorValue,
+                  {
+                    color:
+                      stock.ma50Trend === "green"
+                        ? colors.positive
+                        : stock.ma50Trend === "red"
+                          ? colors.negative
+                          : colors.textMuted,
+                  },
+                ]}
+              >
+                50
+              </Text>
+              <Text
+                style={[styles.indicatorValue, { color: colors.textMuted }]}
+              >
+                /
+              </Text>
+              <Text
+                style={[
+                  styles.indicatorValue,
+                  {
+                    color:
+                      stock.ma200Trend === "green"
+                        ? colors.positive
+                        : stock.ma200Trend === "red"
+                          ? colors.negative
+                          : colors.textMuted,
+                  },
+                ]}
+              >
+                200
               </Text>
             </View>
           ) : (
-            <Text style={styles.noData}>Loading...</Text>
-          )}
-          {quote && (
-            <Text style={[styles.changeText, { color: changeColor }]}>
-              {isPositive ? "+" : ""}
-              {(quote.changePercent ?? 0).toFixed(2)}%
+            <Text style={[styles.indicatorValue, { color: colors.textMuted }]}>
+              --
             </Text>
           )}
-          {(stock.rsi != null ||
-            pct52 != null ||
-            stock.relativeVolume !== undefined) && (
-            <View style={styles.rsiRow}>
-              {pct52 != null && (
-                <Text style={styles.rsiText}>
-                  <Text style={{ color: "#ffffff" }}>52W </Text>
-                  <Text
-                    style={{
-                      color: get52WeekColor(
-                        pct52,
-                        colors.positive,
-                        colors.negative,
-                      ),
-                    }}
-                  >
-                    {pct52.toFixed(0)}%
-                  </Text>
-                </Text>
-              )}
-              {stock.rsi != null && (
-                <View style={styles.rsiInlineRow}>
-                  <Text style={styles.rsiText}>
-                    <Text style={{ color: "#ffffff" }}>RSI </Text>
-                    <Text style={{ color: rsiColor }}>
-                      {stock.rsi.toFixed(1)}
-                    </Text>
-                  </Text>
-                  {stock.rsiTrend === "up" && (
-                    <Ionicons
-                      name="arrow-up"
-                      size={11}
-                      color={colors.positive}
-                      style={styles.rsiInlineArrow}
-                    />
-                  )}
-                  {stock.rsiTrend === "down" && (
-                    <Ionicons
-                      name="arrow-down"
-                      size={11}
-                      color={colors.negative}
-                      style={styles.rsiInlineArrow}
-                    />
-                  )}
-                </View>
-              )}
-              {stock.relativeVolume !== undefined && (
-                <Text style={styles.rsiText}>
-                  <Text style={{ color: "#ffffff" }}>V </Text>
-                  {stock.relativeVolume != null ? (
-                    <Text
-                      style={{
-                        color: getVolumeColor(
-                          stock.relativeVolume,
-                          colors.positive,
-                          colors.negative,
-                          colors.textMuted,
-                        ),
-                      }}
-                    >
-                      {stock.relativeVolume.toFixed(1)}x
-                    </Text>
-                  ) : (
-                    <Text style={{ color: colors.textMuted }}>--</Text>
-                  )}
-                </Text>
-              )}
-              {stock.srSignal != null && (
-                <Text
-                  style={[
-                    styles.rsiText,
-                    {
-                      color:
-                        stock.srSignal === "near_support"
-                          ? colors.positive
-                          : colors.negative,
-                    },
-                  ]}
-                >
-                  {stock.srSignal === "near_support" ? "S▲" : "R▼"}
-                </Text>
-              )}
-              {stock.momentumScore != null && (
-                <Text style={styles.rsiText}>
-                  <Text style={{ color: "#ffffff" }}>M </Text>
-                  <Text
-                    style={{
-                      color: getMomentumColor(
-                        stock.momentumScore,
-                        colors.positive,
-                        colors.negative,
-                      ),
-                    }}
-                  >
-                    {stock.momentumScore}
-                  </Text>
-                </Text>
-              )}
-            </View>
+        </View>
+
+        {/* RSI */}
+        <View style={styles.indicatorCell}>
+          <View style={styles.indicatorLabelRow}>
+            <Text style={styles.indicatorLabel}>RSI</Text>
+            {stock.rsiTrend === "up" && (
+              <Ionicons name="arrow-up" size={9} color={colors.positive} />
+            )}
+            {stock.rsiTrend === "down" && (
+              <Ionicons name="arrow-down" size={9} color={colors.negative} />
+            )}
+          </View>
+          {stock.rsi != null ? (
+            <Text style={[styles.indicatorValue, { color: rsiColor }]}>
+              {stock.rsi.toFixed(1)}
+            </Text>
+          ) : (
+            <Text style={[styles.indicatorValue, { color: colors.textMuted }]}>
+              --
+            </Text>
+          )}
+        </View>
+
+        {/* 52W */}
+        <View style={styles.indicatorCell}>
+          <Text style={styles.indicatorLabel}>52W</Text>
+          {pct52 != null ? (
+            <Text
+              style={[
+                styles.indicatorValue,
+                {
+                  color: get52WeekColor(
+                    pct52,
+                    colors.positive,
+                    colors.negative,
+                  ),
+                },
+              ]}
+            >
+              {pct52.toFixed(0)}%
+            </Text>
+          ) : (
+            <Text style={[styles.indicatorValue, { color: colors.textMuted }]}>
+              --
+            </Text>
+          )}
+        </View>
+
+        {/* M */}
+        <View style={styles.indicatorCell}>
+          <Text style={styles.indicatorLabel}>M</Text>
+          {stock.momentumScore != null ? (
+            <Text
+              style={[
+                styles.indicatorValue,
+                {
+                  color: getMomentumScore(
+                    stock.momentumScore,
+                    colors.positive,
+                    colors.negative,
+                  ),
+                },
+              ]}
+            >
+              {stock.momentumScore}
+            </Text>
+          ) : (
+            <Text style={[styles.indicatorValue, { color: colors.textMuted }]}>
+              --
+            </Text>
+          )}
+        </View>
+
+        {/* V */}
+        <View style={styles.indicatorCell}>
+          <Text style={styles.indicatorLabel}>V</Text>
+          {stock.relativeVolume != null ? (
+            <Text
+              style={[
+                styles.indicatorValue,
+                {
+                  color: getVolumeColor(
+                    stock.relativeVolume,
+                    colors.positive,
+                    colors.negative,
+                    colors.textMuted,
+                  ),
+                },
+              ]}
+            >
+              {stock.relativeVolume.toFixed(1)}x
+            </Text>
+          ) : (
+            <Text style={[styles.indicatorValue, { color: colors.textMuted }]}>
+              --
+            </Text>
+          )}
+        </View>
+
+        {/* S/R */}
+        <View style={styles.indicatorCell}>
+          <Text style={styles.indicatorLabel}>{stock.srSignal != null ? "S/R" : " "}</Text>
+          {stock.srSignal != null ? (
+            <Text
+              style={[
+                styles.indicatorValue,
+                {
+                  color:
+                    stock.srSignal === "near_support"
+                      ? colors.positive
+                      : colors.negative,
+                },
+              ]}
+            >
+              {stock.srSignal === "near_support" ? "S▲" : "R▼"}
+            </Text>
+          ) : (
+            <Text style={styles.indicatorValue}> </Text>
           )}
         </View>
       </View>
@@ -795,41 +875,89 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       lineHeight: 20,
     },
 
-    list: { paddingHorizontal: 20, paddingBottom: 20 },
+    list: { paddingHorizontal: 16, paddingBottom: 20, paddingTop: 4 },
 
-    row: {
-      flexDirection: "column",
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 12,
     },
-    rowTop: {
+    cardTop: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      marginBottom: 12,
+    },
+    cardLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+      gap: 10,
+      minWidth: 0,
+    },
+    sparkWrap: {
+      alignItems: "center",
+      justifyContent: "center",
+      marginHorizontal: 8,
+    },
+    cardRight: {
+      alignItems: "flex-end",
+    },
+    starPriceRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 6,
+    },
+    priceBlock: {
+      alignItems: "flex-end",
+    },
+    starIcon: {
+      marginTop: 2,
     },
     logoWrap: {
       width: 44,
       height: 44,
       borderRadius: 22,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.background,
       alignItems: "center",
       justifyContent: "center",
+      flexShrink: 0,
     },
-    logoText: { fontSize: 13, fontWeight: "700", color: colors.textPrimary },
-    rowInfo: { flex: 1 },
+    logoImage: { width: "100%", height: "100%", borderRadius: 22 },
+    logoText: { fontSize: 11, fontWeight: "700", color: colors.textPrimary },
+    rowInfo: { flex: 1, minWidth: 0 },
     rowSymbol: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
     rowName: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-    rowPrice: { alignItems: "flex-end" },
-    priceRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     priceText: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
-    maTrendWrap: { alignItems: "center", justifyContent: "center" },
-    maTrendText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
     changeText: { fontSize: 12, fontWeight: "600", marginTop: 2 },
-    rsiText: { fontSize: 11, fontWeight: "600" },
-    rsiInlineRow: { flexDirection: "row", alignItems: "center" },
-    rsiInlineArrow: { marginLeft: 2 },
-    rsiRow: { flexDirection: "row", gap: 6, marginTop: 3 },
     noData: { fontSize: 12, color: colors.textMuted },
+
+    indicatorRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    indicatorCell: {
+      alignItems: "center",
+      flex: 1,
+    },
+    indicatorLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+    },
+    indicatorLabel: {
+      fontSize: 10,
+      color: colors.textMuted,
+      fontWeight: "500",
+      marginBottom: 2,
+    },
+    indicatorValue: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    indicatorValueInline: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
   });
 }

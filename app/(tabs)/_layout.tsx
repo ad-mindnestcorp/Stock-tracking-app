@@ -67,32 +67,26 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="alerts"
+        name="ai"
         options={{
-          title: 'Alerts',
+          title: 'AI',
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon name="notifications" color={color} focused={focused} />
+            <TabIcon name="search" color={color} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
-        name="transactions"
+        name="news"
         options={{
-          title: 'History',
+          title: 'News',
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon name="receipt" color={color} focused={focused} />
+            <TabIcon name="newspaper" color={color} focused={focused} />
           ),
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon name="person" color={color} focused={focused} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="alerts" options={{ href: null }} />
+      <Tabs.Screen name="transactions" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }
