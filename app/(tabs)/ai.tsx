@@ -12,33 +12,130 @@ import {
 } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { watchlistApi, type StockSearchResult } from '@/lib/api';
 import { HOME } from '@/components/home/home-tokens';
+import { useAIResearch } from '@/hooks/use-ai-research';
+import { StockSummaryCard } from '@/components/ai/stock-summary-card';
+import { ResearchSectionCard } from '@/components/ai/research-section-card';
+import { AIVerdictCard } from '@/components/ai/ai-verdict-card';
+import { SECTION_META } from '@/lib/ai-types';
+import type { SectionKey, SectionState, AIResearchFoundation, AIValuationFinancials, AIRiskRedTeaming, AITechnicals } from '@/lib/ai-types';
 
-type AnalysisType = 'fundamental' | 'technical';
+const TABS = ['Overview', 'Financials', 'Risks', 'News', 'Sources'] as const;
+type Tab = (typeof TABS)[number];
 
-const ANALYSIS_TYPES: { key: AnalysisType; label: string; icon: string; description: string }[] = [
-  {
-    key: 'fundamental',
-    label: 'Fundamental',
-    icon: 'bar-chart-outline',
-    description: 'Revenue, earnings, valuation & financial health',
-  },
-  {
-    key: 'technical',
-    label: 'Technical',
-    icon: 'trending-up-outline',
-    description: 'RSI, moving averages, support/resistance & momentum',
-  },
+const SECTIONS: SectionKey[] = [
+  'research_foundation',
+  'valuation_financials',
+  'risk_red_teaming',
+  'technicals',
 ];
 
+function getSectionInsightCount(
+  state: SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>,
+  key: SectionKey
+): number | undefined {
+  if (!state.data) return undefined;
+  if (key === 'research_foundation') return (state.data as AIResearchFoundation).insights?.length;
+  if (key === 'valuation_financials') return (state.data as AIValuationFinancials).metrics?.length;
+  if (key === 'risk_red_teaming') return (state.data as AIRiskRedTeaming).risks?.length;
+  return undefined;
+}
+
+function getSectionInsightLabel(key: SectionKey): string {
+  if (key === 'valuation_financials') return 'key metrics';
+  if (key === 'risk_red_teaming') return 'risks identified';
+  return 'key insights';
+}
+
+function SectionCardWithState({
+  sectionKey,
+  state,
+  onPress,
+}: {
+  sectionKey: SectionKey;
+  state: SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>;
+  onPress: () => void;
+}) {
+  if (state.status === 'loading' || state.status === 'idle') {
+    return <SectionSkeleton sectionKey={sectionKey} />;
+  }
+
+  if (state.status === 'error') {
+    return (
+      <SectionErrorCard
+        sectionKey={sectionKey}
+        error={state.error ?? 'Failed to load'}
+        onRetry={state.refetch}
+      />
+    );
+  }
+
+  if (!state.data) return null;
+
+  return (
+    <ResearchSectionCard
+      sectionKey={sectionKey}
+      verdict={(state.data as { verdict: string }).verdict}
+      insightCount={getSectionInsightCount(state, sectionKey)}
+      insightLabel={getSectionInsightLabel(sectionKey)}
+      onPress={onPress}
+    />
+  );
+}
+
+function SectionSkeleton({ sectionKey }: { sectionKey: SectionKey }) {
+  const meta = SECTION_META[sectionKey];
+  return (
+    <View style={skeletonStyles.card}>
+      <View style={skeletonStyles.row}>
+        <View style={skeletonStyles.iconWrap}>
+          <ActivityIndicator size="small" color={HOME.accent} />
+        </View>
+        <View style={skeletonStyles.textWrap}>
+          <Text style={skeletonStyles.title}>{meta.number}  {meta.title}</Text>
+          <Text style={skeletonStyles.desc}>{meta.description}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function SectionErrorCard({
+  sectionKey,
+  error,
+  onRetry,
+}: {
+  sectionKey: SectionKey;
+  error: string;
+  onRetry?: () => void;
+}) {
+  const meta = SECTION_META[sectionKey];
+  return (
+    <View style={errorCardStyles.card}>
+      <View style={errorCardStyles.row}>
+        <Ionicons name="alert-circle-outline" size={16} color={HOME.negative} />
+        <Text style={errorCardStyles.title}>{meta.title}</Text>
+      </View>
+      <Text style={errorCardStyles.error} numberOfLines={1}>{error}</Text>
+      {onRetry && (
+        <TouchableOpacity onPress={onRetry} style={errorCardStyles.retryBtn}>
+          <Text style={errorCardStyles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 export default function AIScreen() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null);
-  const [analysisType, setAnalysisType] = useState<AnalysisType | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,28 +154,44 @@ export default function AIScreen() {
     };
   }, [query, selectedStock]);
 
-  const { data: searchResults = [], isFetching } = useQuery({
+  const { data: searchResults = [], isFetching: isSearching } = useQuery({
     queryKey: ['stockSearch', debouncedQuery],
     queryFn: () => watchlistApi.search(debouncedQuery),
     enabled: debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
 
+  const sections = useAIResearch(selectedStock?.symbol ?? null);
+
   const handleSelectStock = (stock: StockSearchResult) => {
     setSelectedStock(stock);
     setQuery(stock.symbol);
     setDropdownOpen(false);
     setDebouncedQuery('');
+    setActiveTab('Overview');
   };
 
   const handleClear = () => {
     setSelectedStock(null);
     setQuery('');
-    setAnalysisType(null);
     setDropdownOpen(false);
   };
 
-  const showAnalysis = selectedStock && analysisType;
+  const handleSectionPress = (sectionKey: SectionKey) => {
+    if (!selectedStock) return;
+    const sectionState = sections[sectionKey] as SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>;
+    if (!sectionState.data) return;
+    router.push({
+      pathname: '/ai-detail',
+      params: {
+        symbol: selectedStock.symbol,
+        section: sectionKey,
+        data: JSON.stringify(sectionState.data),
+      },
+    });
+  };
+
+  const summaryData = sections.summary.data;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -94,8 +207,10 @@ export default function AIScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>AI Research</Text>
-            <Text style={styles.subtitle}>Stock analysis at a glance</Text>
+            <View style={styles.headerLeft}>
+              <Text style={styles.title}>AI Research</Text>
+              <Ionicons name="sparkles" size={16} color={HOME.accent} style={{ marginTop: 2 }} />
+            </View>
           </View>
 
           {/* Search bar */}
@@ -115,10 +230,8 @@ export default function AIScreen() {
                 returnKeyType="search"
                 accessibilityLabel="Stock search"
               />
-              {isFetching && (
-                <ActivityIndicator size="small" color={HOME.accent} />
-              )}
-              {query.length > 0 && !isFetching && (
+              {isSearching && <ActivityIndicator size="small" color={HOME.accent} />}
+              {query.length > 0 && !isSearching && (
                 <TouchableOpacity onPress={handleClear} hitSlop={8}>
                   <Ionicons name="close-circle" size={18} color={HOME.textSecondary} />
                 </TouchableOpacity>
@@ -128,7 +241,7 @@ export default function AIScreen() {
             {/* Dropdown */}
             {dropdownOpen && debouncedQuery.length >= 1 && (
               <View style={styles.dropdown}>
-                {searchResults.length === 0 && !isFetching ? (
+                {searchResults.length === 0 && !isSearching ? (
                   <Text style={styles.dropdownEmpty}>No results</Text>
                 ) : (
                   searchResults.slice(0, 6).map((item) => (
@@ -149,88 +262,118 @@ export default function AIScreen() {
             )}
           </View>
 
-          {/* Analysis type pills */}
+          {/* Stock selected: show full research UI */}
           {selectedStock && (
             <>
-              <View style={styles.selectedCard}>
-                <View style={styles.selectedLeft}>
-                  <View style={styles.selectedBadge}>
-                    <Text style={styles.selectedBadgeText}>
-                      {selectedStock.symbol.slice(0, 4)}
-                    </Text>
+              {/* Stock summary card */}
+              {summaryData ? (
+                <StockSummaryCard summary={summaryData} />
+              ) : (
+                <View style={styles.summaryPlaceholder}>
+                  <View style={styles.summaryPlaceholderLeft}>
+                    <View style={styles.logoPlaceholder} />
+                    <View style={styles.summaryPlaceholderInfo}>
+                      <Text style={styles.summarySymbol}>{selectedStock.symbol}</Text>
+                      <Text style={styles.summaryName} numberOfLines={1}>
+                        {selectedStock.description}
+                      </Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.selectedSymbol}>{selectedStock.symbol}</Text>
-                    <Text style={styles.selectedName} numberOfLines={1}>
-                      {selectedStock.description}
-                    </Text>
-                  </View>
+                  {sections.summary.status === 'loading' && (
+                    <ActivityIndicator size="small" color={HOME.accent} />
+                  )}
                 </View>
-                <TouchableOpacity onPress={handleClear} hitSlop={8}>
-                  <Ionicons name="close" size={18} color={HOME.textSecondary} />
-                </TouchableOpacity>
-              </View>
+              )}
 
-              <Text style={styles.sectionLabel}>Choose analysis type</Text>
-              <View style={styles.pillRow}>
-                {ANALYSIS_TYPES.map((type) => {
-                  const active = analysisType === type.key;
-                  return (
-                    <TouchableOpacity
-                      key={type.key}
-                      style={[styles.pill, active && styles.pillActive]}
-                      onPress={() => setAnalysisType(type.key)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Ionicons
-                        name={type.icon as any}
-                        size={18}
-                        color={active ? HOME.bg : HOME.textSecondary}
-                        style={styles.pillIcon}
-                      />
-                      <View>
-                        <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
-                          {type.label}
-                        </Text>
-                        <Text style={[styles.pillDesc, active && styles.pillDescActive]}>
-                          {type.description}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              {/* Tab navigation */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.tabScroll}
+                contentContainerStyle={styles.tabRow}
+              >
+                {TABS.map((tab) => (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[styles.tab, activeTab === tab && styles.tabActive]}
+                    onPress={() => setActiveTab(tab)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: activeTab === tab }}
+                  >
+                    <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                      {tab}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Overview tab content */}
+              {activeTab === 'Overview' && (
+                <>
+                  {SECTIONS.map((key) => (
+                    <SectionCardWithState
+                      key={key}
+                      sectionKey={key}
+                      state={sections[key] as SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>}
+                      onPress={() => handleSectionPress(key)}
+                    />
+                  ))}
+
+                  {/* AI Verdict */}
+                  {sections.ai_verdict.status === 'loading' || sections.ai_verdict.status === 'idle' ? (
+                    <View style={styles.verdictSkeleton}>
+                      <ActivityIndicator size="small" color={HOME.accent} />
+                      <Text style={styles.verdictSkeletonText}>Generating verdict…</Text>
+                    </View>
+                  ) : sections.ai_verdict.status === 'error' ? (
+                    <View style={styles.verdictError}>
+                      <Text style={styles.verdictErrorText}>{sections.ai_verdict.error}</Text>
+                      {sections.ai_verdict.refetch && (
+                        <TouchableOpacity onPress={sections.ai_verdict.refetch} style={styles.retryInline}>
+                          <Text style={styles.retryInlineText}>Retry verdict</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : sections.ai_verdict.data ? (
+                    <>
+                      <View style={styles.verdictSpacer} />
+                      <AIVerdictCard verdict={sections.ai_verdict.data} />
+                    </>
+                  ) : null}
+                </>
+              )}
+
+              {/* Non-overview tabs — coming soon */}
+              {activeTab !== 'Overview' && (
+                <View style={styles.comingSoonBlock}>
+                  <Ionicons name="construct-outline" size={36} color={HOME.textMuted} />
+                  <Text style={styles.comingSoonTitle}>{activeTab} coming soon</Text>
+                  <Text style={styles.comingSoonText}>
+                    This tab will be available in the next update.
+                  </Text>
+                </View>
+              )}
             </>
-          )}
-
-          {/* Analysis result / placeholder */}
-          {showAnalysis && (
-            <View style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Ionicons name="sparkles-outline" size={18} color={HOME.accent} />
-                <Text style={styles.resultTitle}>
-                  {selectedStock.symbol} — {analysisType === 'fundamental' ? 'Fundamental' : 'Technical'} Analysis
-                </Text>
-              </View>
-              <View style={styles.comingSoon}>
-                <Ionicons name="construct-outline" size={40} color={HOME.textMuted} />
-                <Text style={styles.comingSoonTitle}>Analysis coming soon</Text>
-                <Text style={styles.comingSoonText}>
-                  AI-powered {analysisType} analysis prompts will be wired up in the next update.
-                </Text>
-              </View>
-            </View>
           )}
 
           {/* Empty state */}
           {!selectedStock && (
             <View style={styles.emptyState}>
-              <Ionicons name="search-circle-outline" size={64} color={HOME.textMuted} />
-              <Text style={styles.emptyTitle}>Search a stock to begin</Text>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="sparkles-outline" size={32} color={HOME.accent} />
+              </View>
+              <Text style={styles.emptyTitle}>AI Stock Research</Text>
               <Text style={styles.emptyText}>
-                Select a ticker and an analysis type to get an AI-generated summary.
+                Search any ticker to get an instant AI-powered institutional research report.
               </Text>
+              <View style={styles.emptyFeatures}>
+                {['Research Foundation', 'Valuation & Financials', 'Risk & Red Teaming', 'Technicals'].map((f) => (
+                  <View key={f} style={styles.emptyFeatureRow}>
+                    <Ionicons name="checkmark-circle" size={14} color={HOME.positive} />
+                    <Text style={styles.emptyFeatureText}>{f}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )}
         </ScrollView>
@@ -239,33 +382,75 @@ export default function AIScreen() {
   );
 }
 
+const skeletonStyles = StyleSheet.create({
+  card: {
+    backgroundColor: HOME.card,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: HOME.border,
+    marginBottom: 10,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: HOME.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textWrap: { flex: 1, gap: 5 },
+  title: { fontSize: 14, fontWeight: '700', color: HOME.textPrimary },
+  desc: { fontSize: 12, color: HOME.textSecondary },
+});
+
+const errorCardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: HOME.card,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: HOME.negative + '44',
+    marginBottom: 10,
+    gap: 6,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 13, fontWeight: '700', color: HOME.textPrimary },
+  error: { fontSize: 12, color: HOME.textSecondary },
+  retryBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: HOME.cardElevated,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 2,
+  },
+  retryText: { fontSize: 12, fontWeight: '700', color: HOME.accent },
+});
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: HOME.bg },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
+  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 48 },
 
-  header: { paddingTop: 6, paddingBottom: 20 },
-  title: { fontSize: 28, fontWeight: '700', color: HOME.textPrimary },
-  subtitle: { fontSize: 14, color: HOME.textSecondary, marginTop: 4 },
+  header: { paddingTop: 6, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 26, fontWeight: '700', color: HOME.textPrimary },
 
-  searchWrap: { zIndex: 10, marginBottom: 16 },
+  searchWrap: { zIndex: 10, marginBottom: 14 },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: HOME.card,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     gap: 10,
     borderWidth: 1,
     borderColor: HOME.border,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: HOME.textPrimary,
-    paddingVertical: 0,
-  },
+  searchInput: { flex: 1, fontSize: 15, color: HOME.textPrimary, paddingVertical: 0 },
   dropdown: {
     marginTop: 6,
     backgroundColor: HOME.card,
@@ -274,12 +459,7 @@ const styles = StyleSheet.create({
     borderColor: HOME.border,
     overflow: 'hidden',
   },
-  dropdownEmpty: {
-    padding: 16,
-    fontSize: 13,
-    color: HOME.textSecondary,
-    textAlign: 'center',
-  },
+  dropdownEmpty: { padding: 16, fontSize: 13, color: HOME.textSecondary, textAlign: 'center' },
   dropdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -292,95 +472,91 @@ const styles = StyleSheet.create({
   dropdownSymbol: { fontSize: 14, fontWeight: '700', color: HOME.textPrimary, width: 56 },
   dropdownName: { fontSize: 13, color: HOME.textSecondary, flex: 1 },
 
-  selectedCard: {
+  summaryPlaceholder: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: HOME.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: HOME.border,
-  },
-  selectedLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  selectedBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: HOME.cardElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedBadgeText: { fontSize: 11, fontWeight: '700', color: HOME.textPrimary },
-  selectedSymbol: { fontSize: 15, fontWeight: '700', color: HOME.textPrimary },
-  selectedName: { fontSize: 12, color: HOME.textSecondary, marginTop: 2, maxWidth: 220 },
-
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: HOME.textSecondary,
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  pillRow: { gap: 10, marginBottom: 24 },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: HOME.card,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: HOME.border,
-    gap: 12,
-  },
-  pillActive: {
-    backgroundColor: HOME.accent,
-    borderColor: HOME.accent,
-  },
-  pillIcon: { flexShrink: 0 },
-  pillLabel: { fontSize: 15, fontWeight: '700', color: HOME.textPrimary },
-  pillLabelActive: { color: HOME.bg },
-  pillDesc: { fontSize: 12, color: HOME.textSecondary, marginTop: 2 },
-  pillDescActive: { color: HOME.bg },
-
-  resultCard: {
     backgroundColor: HOME.card,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
     borderColor: HOME.border,
+    marginBottom: 12,
   },
-  resultHeader: {
+  summaryPlaceholderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: HOME.cardElevated,
+  },
+  summaryPlaceholderInfo: { gap: 6 },
+  summarySymbol: { fontSize: 17, fontWeight: '700', color: HOME.textPrimary },
+  summaryName: { fontSize: 12, color: HOME.textSecondary, maxWidth: 200 },
+
+  tabScroll: { marginBottom: 14 },
+  tabRow: { flexDirection: 'row', gap: 4, paddingRight: 8 },
+  tab: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: HOME.border,
+    backgroundColor: HOME.card,
+  },
+  tabActive: { backgroundColor: HOME.accent, borderColor: HOME.accent },
+  tabText: { fontSize: 13, fontWeight: '600', color: HOME.textSecondary },
+  tabTextActive: { color: '#fff' },
+
+  verdictSpacer: { height: 6 },
+  verdictSkeleton: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: HOME.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: HOME.border,
+    marginTop: 6,
+  },
+  verdictSkeletonText: { fontSize: 13, color: HOME.textSecondary },
+  verdictError: {
+    backgroundColor: HOME.card,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: HOME.negative + '44',
+    marginTop: 6,
     gap: 8,
-    marginBottom: 16,
   },
-  resultTitle: { fontSize: 15, fontWeight: '700', color: HOME.textPrimary },
-  comingSoon: { alignItems: 'center', paddingVertical: 24, gap: 10 },
-  comingSoonTitle: { fontSize: 16, fontWeight: '700', color: HOME.textSecondary },
-  comingSoonText: {
-    fontSize: 13,
-    color: HOME.textMuted,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 260,
+  verdictErrorText: { fontSize: 13, color: HOME.textSecondary },
+  retryInline: {
+    alignSelf: 'flex-start',
+    backgroundColor: HOME.cardElevated,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
+  retryInlineText: { fontSize: 12, fontWeight: '700', color: HOME.accent },
 
-  emptyState: {
+  comingSoonBlock: { alignItems: 'center', paddingVertical: 40, gap: 10 },
+  comingSoonTitle: { fontSize: 16, fontWeight: '700', color: HOME.textSecondary },
+  comingSoonText: { fontSize: 13, color: HOME.textMuted, textAlign: 'center', maxWidth: 240 },
+
+  emptyState: { alignItems: 'center', paddingTop: 56, gap: 14 },
+  emptyIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: HOME.accent + '18',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 60,
-    gap: 12,
   },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: HOME.textSecondary },
-  emptyText: {
-    fontSize: 14,
-    color: HOME.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: 260,
-  },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: HOME.textPrimary },
+  emptyText: { fontSize: 14, color: HOME.textSecondary, textAlign: 'center', lineHeight: 21, maxWidth: 260 },
+  emptyFeatures: { gap: 8, marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 32 },
+  emptyFeatureRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  emptyFeatureText: { fontSize: 13, color: HOME.textSecondary },
 });

@@ -8,9 +8,10 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { router } from 'expo-router';
 import { useIndexes } from '@/hooks/use-indexes';
+import { useLivePrices, type LivePrice } from '@/hooks/use-live-prices';
 import LineChart from '@/components/line-chart';
 import { formatNumberCompact, formatPercent } from '@/lib/formatters';
 import { HOME, getChangeColor } from './home-tokens';
@@ -32,6 +33,9 @@ export default function IndexCardsRow() {
   const scrollRef = useRef<ScrollView>(null);
   const currentIndexRef = useRef(0);
   const hasInitialized = useRef(false);
+
+  const symbols = useMemo(() => data?.map((c) => c.symbol) ?? [], [data]);
+  const livePrices = useLivePrices(symbols);
 
   const pageWidth = screenWidth - OUTER_H_PADDING * 2;
   const cardWidth = (pageWidth - CARD_GAP * (ITEMS_PER_VIEW - 1)) / ITEMS_PER_VIEW;
@@ -130,6 +134,7 @@ export default function IndexCardsRow() {
             card={card}
             cardWidth={cardWidth}
             sparklineWidth={sparklineWidth}
+            livePrice={livePrices[card.symbol]}
           />
         ))}
       </ScrollView>
@@ -141,13 +146,26 @@ function IndexCard({
   card,
   cardWidth,
   sparklineWidth,
+  livePrice,
 }: {
   card: IndexCardData;
   cardWidth: number;
   sparklineWidth: number;
+  livePrice?: LivePrice;
 }) {
-  const color = getChangeColor(card.changePercent);
-  const priceText = formatNumberCompact(card.currentPrice);
+  // Overlay live price; derive changePercent from previousClose estimate
+  const currentPrice = livePrice?.price ?? card.currentPrice;
+  const changePercent = (() => {
+    if (livePrice && card.currentPrice && card.changePercent != null) {
+      // Estimate previousClose from initial REST snapshot
+      const prevClose = card.currentPrice / (1 + card.changePercent / 100);
+      if (prevClose > 0) return ((livePrice.price - prevClose) / prevClose) * 100;
+    }
+    return card.changePercent;
+  })();
+
+  const color = getChangeColor(changePercent);
+  const priceText = formatNumberCompact(currentPrice);
   const isLongPrice = priceText.length > 7;
 
   return (
@@ -156,7 +174,7 @@ function IndexCard({
       activeOpacity={0.7}
       onPress={() => router.push(`/stock/${encodeURIComponent(card.symbol)}` as never)}
       accessibilityRole="button"
-      accessibilityLabel={`${card.label}, ${priceText}, ${formatPercent(card.changePercent)}`}
+      accessibilityLabel={`${card.label}, ${priceText}, ${formatPercent(changePercent)}`}
     >
       <Text style={styles.label} numberOfLines={1}>
         {card.label}
@@ -164,7 +182,7 @@ function IndexCard({
       <Text style={[styles.price, isLongPrice && styles.priceSmall]} numberOfLines={1}>
         {priceText}
       </Text>
-      <Text style={[styles.change, { color }]}>{formatPercent(card.changePercent)}</Text>
+      <Text style={[styles.change, { color }]}>{formatPercent(changePercent)}</Text>
       <View style={styles.chart} pointerEvents="none">
         {card.sparkline && card.sparkline.length >= 2 ? (
           <LineChart

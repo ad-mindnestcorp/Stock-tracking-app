@@ -5,13 +5,22 @@
  */
 
 import { supabase } from './supabase';
+import type {
+  AIStockSummary,
+  AIResearchFoundation,
+  AIValuationFinancials,
+  AIRiskRedTeaming,
+  AITechnicals,
+  AIVerdict,
+} from './ai-types';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const REQUEST_TIMEOUT_MS = 15_000;
 
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<T> {
   const {
     data: { session },
@@ -20,7 +29,7 @@ async function request<T>(
   const userId = session?.user?.id ?? '';
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const url = `${BASE_URL}${path}`;
   try {
@@ -249,6 +258,49 @@ export const alertsApi = {
     request<{ message: string }>(`/api/alerts/${id}/read`, { method: 'PATCH' }),
   markAllRead: () =>
     request<{ message: string }>('/api/alerts/read-all', { method: 'PATCH' }),
+};
+
+// ─── AI Research ─────────────────────────────────────────────────────────────
+
+const AI_SECTION_TIMEOUT_MS = 45_000;
+
+export const aiApi = {
+  getSummary: (symbol: string) =>
+    request<AIStockSummary & { industry: string; marketCap: number | null }>(
+      `/api/ai/research/summary?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
+  getFoundation: (symbol: string) =>
+    request<AIResearchFoundation>(
+      `/api/ai/research/foundation?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
+  getValuation: (symbol: string) =>
+    request<AIValuationFinancials>(
+      `/api/ai/research/valuation?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
+  getRisks: (symbol: string) =>
+    request<AIRiskRedTeaming>(
+      `/api/ai/research/risks?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
+  getTechnicals: (symbol: string) =>
+    request<AITechnicals>(
+      `/api/ai/research/technicals?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
+  getVerdict: (symbol: string) =>
+    request<AIVerdict>(
+      `/api/ai/research/verdict?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
 };
 
 // ─── Push token ───────────────────────────────────────────────────────────────

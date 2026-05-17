@@ -435,6 +435,52 @@ export async function searchSymbols(query: string): Promise<SymbolSearchResult[]
   return results;
 }
 
+export interface BasicFinancials {
+  peRatioTTM: number | null;
+  pbRatioTTM: number | null;
+  evEbitdaTTM: number | null;
+  roeTTM: number | null;
+  revenueGrowthTTMYoy: number | null;
+  grossMarginTTM: number | null;
+  netProfitMarginTTM: number | null;
+  debtEquityTTM: number | null;
+  currentRatioTTM: number | null;
+  freeCashFlowTTM: number | null;
+}
+
+/** Fetch basic financial metrics from Finnhub (cached 10 min) */
+export async function getBasicFinancials(symbol: string): Promise<BasicFinancials | null> {
+  const key = `metrics:${symbol}`;
+  const cached = getCached<BasicFinancials>(key);
+  if (cached) return cached;
+
+  try {
+    const res = await axios.get(`${BASE_URL}/stock/metric`, {
+      params: { symbol, metric: 'all', token: API_KEY },
+      timeout: 8000,
+    });
+    const m = res.data?.metric;
+    if (!m) return null;
+
+    const result: BasicFinancials = {
+      peRatioTTM: m.peTTM ?? m.peExclExtraTTM ?? null,
+      pbRatioTTM: m.pbAnnual ?? null,
+      evEbitdaTTM: m.currentEv_freeCashFlowTTM ?? null,
+      roeTTM: m.roeTTM ?? null,
+      revenueGrowthTTMYoy: m.revenueGrowthTTMYoy ?? null,
+      grossMarginTTM: m.grossMarginTTM ?? null,
+      netProfitMarginTTM: m.netProfitMarginTTM ?? null,
+      debtEquityTTM: m.totalDebt_totalEquityAnnual ?? null,
+      currentRatioTTM: m.currentRatioAnnual ?? null,
+      freeCashFlowTTM: m.freeCashFlowTTM ?? null,
+    };
+    setCached(key, result, TTL.CANDLES_DAILY);
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 /** Popular US stocks used for the Home screen trending/gainers/losers list */
 export const POPULAR_SYMBOLS = [
   'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA',

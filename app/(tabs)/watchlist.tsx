@@ -10,6 +10,7 @@ import {
     useDeleteWatchlist,
     useAddStockToWatchlist,
 } from "@/hooks/use-watchlist";
+import { useLivePrices, type LivePrice } from "@/hooks/use-live-prices";
 import {
     watchlistsApi,
     type Watchlist,
@@ -70,6 +71,9 @@ export default function WatchlistScreen() {
     } = useWatchlistStocks(selectedId ?? "");
 
     const { mutate: addStock } = useAddStockToWatchlist();
+
+    const stockSymbols = useMemo(() => stocks.map((s) => s.symbol), [stocks]);
+    const livePrices = useLivePrices(stockSymbols);
 
     const isLoading = watchlistsLoading || (!!selectedId && stocksLoading);
 
@@ -263,7 +267,12 @@ export default function WatchlistScreen() {
                     }
                     contentContainerStyle={styles.list}
                     renderItem={({ item }) => (
-                        <WatchlistRow stock={item} colors={colors} styles={styles} />
+                        <WatchlistRow
+                            stock={item}
+                            livePrice={livePrices[item.symbol]}
+                            colors={colors}
+                            styles={styles}
+                        />
                     )}
                 />
             )}
@@ -986,15 +995,27 @@ function getVolumeColor(
 
 function WatchlistRow({
     stock,
+    livePrice,
     colors,
     styles,
 }: {
     stock: WatchlistStock;
+    livePrice?: LivePrice;
     colors: ReturnType<typeof useTheme>["colors"];
     styles: ReturnType<typeof createStyles>;
 }) {
     const quote = stock.quote;
-    const isPositive = (quote?.changePercent ?? 0) >= 0;
+
+    // Overlay live price on top of REST snapshot
+    const currentPrice = livePrice?.price ?? quote?.currentPrice ?? null;
+    const changePercent = (() => {
+        if (livePrice && quote?.previousClose && quote.previousClose > 0) {
+            return ((livePrice.price - quote.previousClose) / quote.previousClose) * 100;
+        }
+        return quote?.changePercent ?? null;
+    })();
+
+    const isPositive = (changePercent ?? 0) >= 0;
     const changeColor = isPositive ? colors.positive : colors.negative;
     const rsiColor = stock.isOverbought
         ? colors.negative
@@ -1003,11 +1024,11 @@ function WatchlistRow({
             : colors.textSecondary;
 
     const show52Week =
-        quote != null && stock.week52High != null && stock.week52Low != null;
+        currentPrice != null && stock.week52High != null && stock.week52Low != null;
 
     const pct52 = show52Week
         ? calc52WeekPercent(
-            quote!.currentPrice,
+            currentPrice!,
             stock.week52Low!,
             stock.week52High!,
         )
@@ -1064,17 +1085,17 @@ function WatchlistRow({
                 <View style={styles.cardRight}>
                     <View style={styles.starPriceRow}>
                         <View style={styles.priceBlock}>
-                            {quote ? (
+                            {currentPrice != null ? (
                                 <Text style={styles.priceText}>
-                                    ${quote.currentPrice.toFixed(2)}
+                                    ${currentPrice.toFixed(2)}
                                 </Text>
                             ) : (
                                 <Text style={styles.noData}>—</Text>
                             )}
-                            {quote && (
+                            {changePercent != null && (
                                 <Text style={[styles.changeText, { color: changeColor }]}>
                                     {isPositive ? "+" : ""}
-                                    {(quote.changePercent ?? 0).toFixed(2)}%
+                                    {changePercent.toFixed(2)}%
                                 </Text>
                             )}
                         </View>
