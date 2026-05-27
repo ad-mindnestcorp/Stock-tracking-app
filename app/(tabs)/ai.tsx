@@ -20,27 +20,23 @@ import { useAIResearch } from '@/hooks/use-ai-research';
 import { StockSummaryCard } from '@/components/ai/stock-summary-card';
 import { ResearchSectionCard } from '@/components/ai/research-section-card';
 import { AIVerdictCard } from '@/components/ai/ai-verdict-card';
-import { SECTION_META } from '@/lib/ai-types';
-import type { SectionKey, SectionState, AIResearchFoundation, AIValuationFinancials, AIRiskRedTeaming, AITechnicals } from '@/lib/ai-types';
+import { TierSelectionModal } from '@/components/ai/tier-selection-modal';
+import { SECTION_META, TIER_SECTIONS } from '@/lib/ai-types';
+import type { SectionKey, SectionState, AIResearchFoundation, AIValuationFinancials, AIRiskRedTeaming, AITechnicals, ResearchTier } from '@/lib/ai-types';
 
 const TABS = ['Overview', 'Financials', 'Risks', 'News', 'Sources'] as const;
 type Tab = (typeof TABS)[number];
 
-const SECTIONS: SectionKey[] = [
-  'research_foundation',
-  'valuation_financials',
-  'risk_red_teaming',
-  'technicals',
-];
-
 function getSectionInsightCount(
-  state: SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>,
+  state: SectionState<any>,
   key: SectionKey
 ): number | undefined {
   if (!state.data) return undefined;
   if (key === 'research_foundation') return (state.data as AIResearchFoundation).insights?.length;
   if (key === 'valuation_financials') return (state.data as AIValuationFinancials).metrics?.length;
   if (key === 'risk_red_teaming') return (state.data as AIRiskRedTeaming).risks?.length;
+  // For other sections, try to find insights or similar arrays
+  if (state.data.insights) return state.data.insights.length;
   return undefined;
 }
 
@@ -56,7 +52,7 @@ function SectionCardWithState({
   onPress,
 }: {
   sectionKey: SectionKey;
-  state: SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>;
+  state: SectionState<any>;
   onPress: () => void;
 }) {
   if (state.status === 'loading' || state.status === 'idle') {
@@ -88,6 +84,7 @@ function SectionCardWithState({
 
 function SectionSkeleton({ sectionKey }: { sectionKey: SectionKey }) {
   const meta = SECTION_META[sectionKey];
+  if (!meta) return null;
   return (
     <View style={skeletonStyles.card}>
       <View style={skeletonStyles.row}>
@@ -113,6 +110,7 @@ function SectionErrorCard({
   onRetry?: () => void;
 }) {
   const meta = SECTION_META[sectionKey];
+  if (!meta) return null;
   return (
     <View style={errorCardStyles.card}>
       <View style={errorCardStyles.row}>
@@ -135,6 +133,8 @@ export default function AIScreen() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null);
+  const [selectedTier, setSelectedTier] = useState<ResearchTier | null>(null);
+  const [showTierModal, setShowTierModal] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -161,7 +161,7 @@ export default function AIScreen() {
     staleTime: 30_000,
   });
 
-  const sections = useAIResearch(selectedStock?.symbol ?? null);
+  const sections = useAIResearch(selectedStock?.symbol ?? null, selectedTier);
 
   const handleSelectStock = (stock: StockSearchResult) => {
     setSelectedStock(stock);
@@ -169,17 +169,24 @@ export default function AIScreen() {
     setDropdownOpen(false);
     setDebouncedQuery('');
     setActiveTab('Overview');
+    setSelectedTier(null);
+    setShowTierModal(true);
+  };
+
+  const handleSelectTier = (tier: ResearchTier) => {
+    setSelectedTier(tier);
   };
 
   const handleClear = () => {
     setSelectedStock(null);
+    setSelectedTier(null);
     setQuery('');
     setDropdownOpen(false);
   };
 
   const handleSectionPress = (sectionKey: SectionKey) => {
     if (!selectedStock) return;
-    const sectionState = sections[sectionKey] as SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>;
+    const sectionState = sections[sectionKey] as SectionState<any>;
     if (!sectionState.data) return;
     router.push({
       pathname: '/ai-detail',
@@ -192,6 +199,9 @@ export default function AIScreen() {
   };
 
   const summaryData = sections.summary.data;
+  
+  // Get sections for current tier
+  const currentTierSections = selectedTier ? TIER_SECTIONS[selectedTier] : TIER_SECTIONS.basic;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -262,8 +272,15 @@ export default function AIScreen() {
             )}
           </View>
 
+          {/* Tier selection modal */}
+          <TierSelectionModal
+            visible={showTierModal}
+            onClose={() => setShowTierModal(false)}
+            onSelectTier={handleSelectTier}
+          />
+
           {/* Stock selected: show full research UI */}
-          {selectedStock && (
+          {selectedStock && selectedTier && (
             <>
               {/* Stock summary card */}
               {summaryData ? (
@@ -310,11 +327,11 @@ export default function AIScreen() {
               {/* Overview tab content */}
               {activeTab === 'Overview' && (
                 <>
-                  {SECTIONS.map((key) => (
+                  {currentTierSections.map((key) => (
                     <SectionCardWithState
                       key={key}
                       sectionKey={key}
-                      state={sections[key] as SectionState<AIResearchFoundation | AIValuationFinancials | AIRiskRedTeaming | AITechnicals>}
+                      state={sections[key] as SectionState<any>}
                       onPress={() => handleSectionPress(key)}
                     />
                   ))}

@@ -301,6 +301,13 @@ export const aiApi = {
       {},
       AI_SECTION_TIMEOUT_MS
     ),
+  // Generic section fetcher for tier-based sections
+  getSection: (symbol: string, sectionKey: string) =>
+    request<unknown>(
+      `/api/ai/research/section/${sectionKey}?symbol=${encodeURIComponent(symbol)}`,
+      {},
+      AI_SECTION_TIMEOUT_MS
+    ),
 };
 
 // ─── Push token ───────────────────────────────────────────────────────────────

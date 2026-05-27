@@ -202,6 +202,103 @@ function TechnicalsDetail({ data }: { data: AITechnicals }) {
   );
 }
 
+function GenericSectionDetail({ data }: { data: any }) {
+  if (!data) return null;
+
+  const renderValue = (val: any, key: string): React.ReactNode => {
+    if (Array.isArray(val)) {
+      // Arrays of strings -> bullet list
+      if (val.length > 0 && typeof val[0] === 'string') {
+        return <BulletList items={val} />;
+      }
+      // Arrays of objects -> render each object
+      if (val.length > 0 && typeof val[0] === 'object') {
+        return (
+          <>
+            {val.map((item, i) => (
+              <View key={i} style={styles.genericObjectRow}>
+                {Object.entries(item).map(([k, v]) => (
+                  <Text key={k} style={styles.genericObjectText}>
+                    <Text style={styles.genericObjectLabel}>{k}: </Text>
+                    {String(v)}
+                  </Text>
+                ))}
+              </View>
+            ))}
+          </>
+        );
+      }
+    }
+    if (typeof val === 'string') {
+      return <Text style={styles.bodyText}>{val}</Text>;
+    }
+    return null;
+  };
+
+  const sections = Object.entries(data).filter(
+    ([key]) => key !== 'verdict' && key !== 'comparison_table' && key !== 'quarterly_data' && key !== 'top_customers'
+  );
+
+  return (
+    <>
+      {sections.map(([key, value]) => {
+        const title = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const content = renderValue(value, key);
+        if (!content) return null;
+        return (
+          <SectionBlock key={key} title={title}>
+            {content}
+          </SectionBlock>
+        );
+      })}
+      
+      {/* Handle special table fields if present */}
+      {data.comparison_table && Array.isArray(data.comparison_table) && (
+        <SectionBlock title="Comparison Table">
+          {data.comparison_table.map((row: any, i: number) => (
+            <View key={i} style={styles.genericObjectRow}>
+              {Object.entries(row).map(([k, v]) => (
+                <Text key={k} style={styles.genericObjectText}>
+                  <Text style={styles.genericObjectLabel}>{k}: </Text>
+                  {String(v)}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </SectionBlock>
+      )}
+      {data.quarterly_data && Array.isArray(data.quarterly_data) && (
+        <SectionBlock title="Quarterly Data">
+          {data.quarterly_data.map((row: any, i: number) => (
+            <View key={i} style={styles.genericObjectRow}>
+              {Object.entries(row).map(([k, v]) => (
+                <Text key={k} style={styles.genericObjectText}>
+                  <Text style={styles.genericObjectLabel}>{k}: </Text>
+                  {String(v)}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </SectionBlock>
+      )}
+      {data.top_customers && Array.isArray(data.top_customers) && (
+        <SectionBlock title="Top Customers">
+          {data.top_customers.map((row: any, i: number) => (
+            <View key={i} style={styles.genericObjectRow}>
+              {Object.entries(row).map(([k, v]) => (
+                <Text key={k} style={styles.genericObjectText}>
+                  <Text style={styles.genericObjectLabel}>{k}: </Text>
+                  {String(v)}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </SectionBlock>
+      )}
+    </>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function AIDetailScreen() {
@@ -277,6 +374,11 @@ export default function AIDetailScreen() {
         )}
         {sectionKey === 'technicals' && (
           <TechnicalsDetail data={parsedData as AITechnicals} />
+        )}
+        
+        {/* Generic insight renderer for other sections */}
+        {!['research_foundation', 'valuation_financials', 'risk_red_teaming', 'technicals'].includes(sectionKey) && (
+          <GenericSectionDetail data={parsedData as any} />
         )}
 
         <View style={styles.disclaimer}>
@@ -356,6 +458,10 @@ const styles = StyleSheet.create({
   riskHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   riskLabel: { fontSize: 13, fontWeight: '700', color: HOME.textPrimary },
   riskDesc: { fontSize: 13, color: HOME.textSecondary, lineHeight: 19, paddingLeft: 19 },
+
+  genericObjectRow: { marginBottom: 12, gap: 4 },
+  genericObjectText: { fontSize: 13, color: HOME.textSecondary, lineHeight: 19 },
+  genericObjectLabel: { fontWeight: '600', color: HOME.textPrimary },
 
   disclaimer: {
     flexDirection: 'row',
