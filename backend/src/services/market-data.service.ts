@@ -2,14 +2,18 @@
  * Deterministic market data aggregator.
  * All numerical financial data must flow through this service — never from AI inference.
  * GPT receives only the verified output of these functions for qualitative interpretation.
+ * 
+ * Fallback chain: Finnhub → FMP → DATA_NOT_AVAILABLE
  */
 
 import axios from 'axios';
 import { getQuote, getCompanyProfile, getWeek52Data, getBasicFinancials, getDailyCandles } from './finnhub.service';
 import { normalizePercent, normalizePercentFields, DATA_NOT_AVAILABLE } from '../utils/normalize-percent';
-import { getFMPRevenueEstimates, getFMPKeyMetrics, getFMPForwardPSData, getFMPEbitdaMargin } from './fmp.service';
+import { getFMPRevenueEstimates, getFMPKeyMetrics, getFMPForwardPSData, getFMPEbitdaMargin, getComprehensiveMetrics } from './fmp.service';
 import { getHistoricalPSRange, getValuationBands } from './historical-valuation.service';
 import { getCustomerConcentration } from './sec-filings.service';
+import { getIndustryType, getMetricPriorities, type IndustryType } from '../utils/metric-mapper';
+import { logMetricSources } from '../utils/metrics-logger';
 
 const BASE_URL = 'https://finnhub.io/api/v1';
 const API_KEY = process.env.FINNHUB_API_KEY ?? '';
@@ -700,12 +704,15 @@ export async function getAsymmetryValuationData(
 }
 
 // ─── All-in-one verified financials bundle ────────────────────────────────────
+// Implements: Finnhub → FMP → DATA_NOT_AVAILABLE fallback chain
+// Industry-aware: prioritizes different metrics for fintech/banks vs tech vs default
 
 export async function getVerifiedFinancials(symbol: string): Promise<VerifiedFinancials> {
   const key = `verified:financials:${symbol}`;
   const cached = getLocal<VerifiedFinancials>(key);
   if (cached) return cached;
 
+  // Fetch all base data in parallel
   const [quote, profile, financials, week52] = await Promise.all([
     getQuote(symbol),
     getCompanyProfile(symbol),
@@ -713,75 +720,144 @@ export async function getVerifiedFinancials(symbol: string): Promise<VerifiedFin
     getWeek52Data(symbol),
   ]);
 
-  const f = financials as unknown as Record<string, unknown> | null;
-  let psTTMRaw = (f as { psTTM?: number } | null)?.psTTM ?? null;
+  // Determine industry type for metric prioritization
+  const industryType = getIndustryType(symbol, profile?.industry);
+  const priorities = getMetricPriorities(industryType);
+  
+  console.log(`[market-data] ${symbol} — industry: ${industryType}, profile.industry: ${profile?.industry ?? 'unknown'}`);
+
+  // Track metric sources for logging
+  const sources: Record<string, 'finnhub' | 'fmp' | 'computed' | 'unavailable'> = {};
+
+  // Extract Finnhub metrics first
+  let psTTM = financials?.psTTM ?? null;
+  let peRatioTTM = financials?.peRatioTTM ?? null;
+  let pbRatioTTM = financials?.pbRatioTTM ?? null;
   let evEbitdaTTM = financials?.evEbitdaTTM ?? null;
   let roeTTM = financials?.roeTTM ?? null;
-  let freeCashFlowTTM = financials?.freeCashFlowTTM ?? null;
+  // Prefer freeCashFlowAnnual (per API docs); fall back to freeCashFlowTTM
+  let freeCashFlowTTM = financials?.freeCashFlowAnnual ?? financials?.freeCashFlowTTM ?? null;
   let debtEquityTTM = financials?.debtEquityTTM ?? null;
+  let currentRatioTTM = financials?.currentRatioTTM ?? null;
   let revenueGrowthTTMYoy = financials?.revenueGrowthTTMYoy ?? null;
   let grossMarginTTM = financials?.grossMarginTTM ?? null;
   let netProfitMarginTTM = financials?.netProfitMarginTTM ?? null;
 
-  // ENHANCED FMP FALLBACK: Fetch FMP data for ALL missing critical metrics
-  // Priority: Finnhub primary → FMP fallback → DATA_NOT_AVAILABLE
-  const missingMetrics = !evEbitdaTTM || !roeTTM || !freeCashFlowTTM || !debtEquityTTM ||
-                         !revenueGrowthTTMYoy || !grossMarginTTM || !netProfitMarginTTM || !psTTMRaw;
-  
-  if (missingMetrics) {
+  // Record Finnhub sources
+  if (peRatioTTM !== null) sources.peRatioTTM = 'finnhub';
+  if (pbRatioTTM !== null) sources.pbRatioTTM = 'finnhub';
+  if (psTTM !== null) sources.psTTM = 'finnhub';
+  if (evEbitdaTTM !== null) sources.evEbitdaTTM = 'finnhub';
+  if (roeTTM !== null) sources.roeTTM = 'finnhub';
+  if (freeCashFlowTTM !== null) sources.freeCashFlowTTM = 'finnhub';
+  if (debtEquityTTM !== null) sources.debtEquityTTM = 'finnhub';
+  if (currentRatioTTM !== null) sources.currentRatioTTM = 'finnhub';
+  if (revenueGrowthTTMYoy !== null) sources.revenueGrowthTTMYoy = 'finnhub';
+  if (grossMarginTTM !== null) sources.grossMarginTTM = 'finnhub';
+  if (netProfitMarginTTM !== null) sources.netProfitMarginTTM = 'finnhub';
+
+  // FMP COMPREHENSIVE FALLBACK: Use stable API endpoints for all 8 target metrics
+  const needsFMPFallback = evEbitdaTTM === null || peRatioTTM === null ||
+    roeTTM === null || freeCashFlowTTM === null || debtEquityTTM === null ||
+    revenueGrowthTTMYoy === null || grossMarginTTM === null || currentRatioTTM === null;
+
+  if (needsFMPFallback) {
     try {
-      const fmpMetrics = await getFMPKeyMetrics(symbol);
-      if (fmpMetrics.available) {
-        // EV/EBITDA
-        if (!evEbitdaTTM && fmpMetrics.evToEbitda !== null) {
-          evEbitdaTTM = fmpMetrics.evToEbitda;
-          console.log(`[market-data:verified_financials] ${symbol} — EV/EBITDA from FMP fallback: ${evEbitdaTTM}`);
+      const comprehensive = await getComprehensiveMetrics(symbol);
+
+      if (comprehensive.available) {
+        if (peRatioTTM === null && comprehensive.peRatio !== null) {
+          peRatioTTM = comprehensive.peRatio;
+          sources.peRatioTTM = 'fmp';
         }
-        
-        // ROE
-        if (!roeTTM && fmpMetrics.returnOnEquity !== null) {
-          roeTTM = fmpMetrics.returnOnEquity;
-          console.log(`[market-data:verified_financials] ${symbol} — ROE from FMP fallback: ${roeTTM}`);
+        if (evEbitdaTTM === null && comprehensive.evEbitda !== null) {
+          evEbitdaTTM = comprehensive.evEbitda;
+          sources.evEbitdaTTM = 'fmp';
         }
-        
-        // Debt/Equity
-        if (!debtEquityTTM && fmpMetrics.debtToEquity !== null) {
-          debtEquityTTM = fmpMetrics.debtToEquity;
-          console.log(`[market-data:verified_financials] ${symbol} — Debt/Equity from FMP fallback: ${debtEquityTTM}`);
+        if (roeTTM === null && comprehensive.roe !== null) {
+          roeTTM = comprehensive.roe;
+          sources.roeTTM = 'fmp';
         }
-        
-        // P/S
-        if (!psTTMRaw && fmpMetrics.priceToSalesRatio !== null) {
-          psTTMRaw = fmpMetrics.priceToSalesRatio;
-          console.log(`[market-data:verified_financials] ${symbol} — P/S from FMP fallback: ${psTTMRaw}`);
+        if (currentRatioTTM === null && comprehensive.currentRatio !== null) {
+          currentRatioTTM = comprehensive.currentRatio;
+          sources.currentRatioTTM = 'fmp';
         }
-        
-        // Gross Margin
-        if (!grossMarginTTM && fmpMetrics.grossProfitMargin !== null) {
-          grossMarginTTM = fmpMetrics.grossProfitMargin;
-          console.log(`[market-data:verified_financials] ${symbol} — Gross Margin from FMP fallback: ${grossMarginTTM}`);
+        if (debtEquityTTM === null && comprehensive.debtEquity !== null) {
+          debtEquityTTM = comprehensive.debtEquity;
+          sources.debtEquityTTM = 'fmp';
         }
-        
-        // Net Profit Margin
-        if (!netProfitMarginTTM && fmpMetrics.netProfitMargin !== null) {
-          netProfitMarginTTM = fmpMetrics.netProfitMargin;
-          console.log(`[market-data:verified_financials] ${symbol} — Net Margin from FMP fallback: ${netProfitMarginTTM}`);
+        if (grossMarginTTM === null && comprehensive.grossMargin !== null) {
+          grossMarginTTM = comprehensive.grossMargin;
+          sources.grossMarginTTM = 'fmp';
         }
-        
-        // Revenue Growth
-        if (!revenueGrowthTTMYoy && fmpMetrics.revenueGrowth !== null) {
-          revenueGrowthTTMYoy = fmpMetrics.revenueGrowth;
-          console.log(`[market-data:verified_financials] ${symbol} — Revenue Growth from FMP fallback: ${revenueGrowthTTMYoy}`);
+        if (revenueGrowthTTMYoy === null && comprehensive.revenueGrowth !== null) {
+          revenueGrowthTTMYoy = comprehensive.revenueGrowth;
+          sources.revenueGrowthTTMYoy = 'fmp';
         }
-        
-        // Free Cash Flow: compute from freeCashFlowPerShare * shares outstanding
-        if (!freeCashFlowTTM && fmpMetrics.freeCashFlowPerShare && profile?.shareOutstanding) {
-          freeCashFlowTTM = fmpMetrics.freeCashFlowPerShare * profile.shareOutstanding * 1_000_000;
-          console.log(`[market-data:verified_financials] ${symbol} — FCF from FMP fallback: ${Math.round(freeCashFlowTTM / 1e6)}M`);
+        if (freeCashFlowTTM === null && comprehensive.freeCashFlow !== null) {
+          freeCashFlowTTM = comprehensive.freeCashFlow;
+          sources.freeCashFlowTTM = 'fmp';
         }
       }
     } catch (err) {
-      console.warn(`[market-data:verified_financials] ${symbol} FMP fallback failed — ${err instanceof Error ? err.message : err}`);
+      console.warn(`[market-data] ${symbol} FMP comprehensive fallback failed: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Secondary fallback to legacy getFMPKeyMetrics for remaining gaps
+    const stillMissingCritical = evEbitdaTTM === null || psTTM === null ||
+      netProfitMarginTTM === null;
+
+    if (stillMissingCritical) {
+      try {
+        const fmpMetrics = await getFMPKeyMetrics(symbol);
+
+        if (fmpMetrics.available) {
+          if (evEbitdaTTM === null && fmpMetrics.evToEbitda !== null) {
+            evEbitdaTTM = fmpMetrics.evToEbitda;
+            sources.evEbitdaTTM = 'fmp';
+          }
+          if (psTTM === null && fmpMetrics.priceToSalesRatio !== null) {
+            psTTM = fmpMetrics.priceToSalesRatio;
+            sources.psTTM = 'fmp';
+          }
+          if (netProfitMarginTTM === null && fmpMetrics.netProfitMargin !== null) {
+            netProfitMarginTTM = fmpMetrics.netProfitMargin;
+            sources.netProfitMarginTTM = 'fmp';
+          }
+        }
+      } catch (err) {
+        console.warn(`[market-data] ${symbol} FMP legacy fallback failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
+  // Mark unavailable metrics
+  if (evEbitdaTTM === null) sources.evEbitdaTTM = 'unavailable';
+  if (psTTM === null) sources.psTTM = 'unavailable';
+  if (roeTTM === null) sources.roeTTM = 'unavailable';
+  if (debtEquityTTM === null) sources.debtEquityTTM = 'unavailable';
+  if (grossMarginTTM === null) sources.grossMarginTTM = 'unavailable';
+  if (netProfitMarginTTM === null) sources.netProfitMarginTTM = 'unavailable';
+  if (revenueGrowthTTMYoy === null) sources.revenueGrowthTTMYoy = 'unavailable';
+  if (freeCashFlowTTM === null) sources.freeCashFlowTTM = 'unavailable';
+  if (currentRatioTTM === null) sources.currentRatioTTM = 'unavailable';
+
+  // Log metric sources
+  logMetricSources(symbol, sources);
+
+  // Fetch EBITDA margin from FMP (computed from income statements)
+  let ebitdaMarginTTM: number | null = null;
+  
+  // Skip EBITDA margin for fintech/banks (not meaningful)
+  if (!priorities.avoid.includes('evEbitdaTTM')) {
+    try {
+      const fmpEbitda = await getFMPEbitdaMargin(symbol);
+      if (fmpEbitda.available && fmpEbitda.ebitdaMarginTTM !== null) {
+        ebitdaMarginTTM = fmpEbitda.ebitdaMarginTTM;
+        sources.ebitdaMarginTTM = 'fmp';
+      }
+    } catch (err) {
+      console.warn(`[market-data] ${symbol} EBITDA margin fetch failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -789,22 +865,10 @@ export async function getVerifiedFinancials(symbol: string): Promise<VerifiedFin
   const marketCapB = profile?.marketCap ? Math.round(profile.marketCap / 10) / 100 : null;
 
   const fields = [
-    financials?.peRatioTTM, evEbitdaTTM, roeTTM,
+    peRatioTTM, evEbitdaTTM, roeTTM,
     revenueGrowthTTMYoy, grossMarginTTM,
-    debtEquityTTM, financials?.currentRatioTTM,
+    debtEquityTTM, currentRatioTTM,
   ];
-
-  // Fetch EBITDA margin from FMP (deterministic, computed from income statements)
-  let ebitdaMarginTTM: number | null = null;
-  try {
-    const fmpEbitda = await getFMPEbitdaMargin(symbol);
-    if (fmpEbitda.available && fmpEbitda.ebitdaMarginTTM !== null) {
-      ebitdaMarginTTM = fmpEbitda.ebitdaMarginTTM;
-      console.log(`[market-data:verified_financials] ${symbol} — EBITDA margin from FMP: ${Math.round(ebitdaMarginTTM * 100)}%`);
-    }
-  } catch (err) {
-    console.warn(`[market-data:verified_financials] ${symbol} — EBITDA margin fetch failed: ${err instanceof Error ? err.message : err}`);
-  }
 
   const result: VerifiedFinancials = {
     symbol,
@@ -812,9 +876,9 @@ export async function getVerifiedFinancials(symbol: string): Promise<VerifiedFin
     price: quote.currentPrice ?? 0,
     marketCapB,
     sharesOutstanding: profile?.shareOutstanding ?? null,
-    peRatioTTM: financials?.peRatioTTM ?? null,
-    pbRatioTTM: financials?.pbRatioTTM ?? null,
-    psTTM: psTTMRaw,
+    peRatioTTM,
+    pbRatioTTM,
+    psTTM,
     evEbitdaTTM,
     roeTTM,
     revenueGrowthTTMYoy,
@@ -822,12 +886,23 @@ export async function getVerifiedFinancials(symbol: string): Promise<VerifiedFin
     netProfitMarginTTM,
     ebitdaMarginTTM,
     debtEquityTTM,
-    currentRatioTTM: financials?.currentRatioTTM ?? null,
+    currentRatioTTM,
     freeCashFlowTTM,
     hv30,
     dataCompleteness: dataCompleteness(fields),
     fetchedAt: new Date().toISOString(),
   };
+
+  // Log summary
+  const availableCount = Object.values(sources).filter(s => s !== 'unavailable').length;
+  const unavailableMetrics = Object.entries(sources)
+    .filter(([, s]) => s === 'unavailable')
+    .map(([k]) => k);
+  
+  console.log(`[market-data] ${symbol} — ${availableCount}/${Object.keys(sources).length} metrics available`);
+  if (unavailableMetrics.length > 0) {
+    console.log(`[market-data] ${symbol} — unavailable: ${unavailableMetrics.join(', ')}`);
+  }
 
   setLocal(key, result);
   return result;

@@ -23,6 +23,7 @@ import {
   computeHistoricalVolatility,
 } from '../services/market-data.service';
 import { validateAIOutput, validateFinancialInputs, sanitizeAIOutput } from '../services/validation.service';
+import { getSECFilingStatus } from '../services/sec-filings.service';
 import { normalizePercent } from '../utils/normalize-percent';
 import { buildDataDrivenConfidence, buildQualitativeConfidence } from '../services/confidence.service';
 import {
@@ -246,7 +247,7 @@ Return JSON:
 {"verdict":"Positive"|"Neutral"|"Negative","relative_valuation":["bullet1","bullet2","bullet3"],"growth_metrics":["bullet1","bullet2","bullet3"],"financial_health":["bullet1","bullet2","bullet3"],"metrics":[{"label":"P/E Ratio","value":"${fmt(metrics.peRatioTTM)}","note":"vs sector avg"},{"label":"Revenue Growth","value":"${fmtPct(metrics.revenueGrowthTTMYoy)}","note":"TTM YoY"},{"label":"Gross Margin","value":"${fmtPct(metrics.grossMarginTTM)}","note":"TTM"},{"label":"Free Cash Flow","value":"${metrics.freeCashFlowTTM !== null ? `$${Math.round(metrics.freeCashFlowTTM / 1e6)}M` : 'DATA_NOT_AVAILABLE'}","note":"TTM"},{"label":"Debt/Equity","value":"${fmt(metrics.debtEquityTTM)}","note":"leverage"},{"label":"EV/EBITDA","value":"${fmt(metrics.evEbitdaTTM)}","note":"vs sector"},{"label":"ROE","value":"${fmtPct(metrics.roeTTM)}","note":"TTM"},{"label":"Current Ratio","value":"${fmt(metrics.currentRatioTTM)}","note":"liquidity"}]}`;
 }
 
-function buildRiskPrompt(symbol: string, companyName: string, industry: string): string {
+function buildRiskPrompt(symbol: string, companyName: string, industry: string, secStatus: string): string {
   return `Analyze risks for ${symbol} (${companyName}, industry: ${industry}).
 
 You MAY use web search for recent regulatory developments and competitive threats.
@@ -262,9 +263,10 @@ VERIFIED STRUCTURED DATA:
 - Symbol: ${symbol}
 - Company: ${companyName}
 - Industry: ${industry}
+- SEC Status (from EDGAR 10-K): ${secStatus}
 
 Return JSON. All string items must be plain text, no URLs, no markdown, max 15 words each.
-For sec_flags: only include if clearly documented in SEC filings. For customer_concentration: only if publicly disclosed in official filings.
+For sec_flags: use ONLY the SEC Status above — do NOT invent any SEC/legal claims. For customer_concentration: only if publicly disclosed in official filings.
 
 {"verdict":"Low"|"Moderate"|"Elevated"|"High","bear_case":["bullet1","bullet2","bullet3"],"sec_flags":["bullet1","bullet2","bullet3"],"customer_concentration":["bullet1","bullet2"],"risks":[{"label":"Risk name","description":"1 short sentence max 15 words"},{"label":"Risk name","description":"1 short sentence max 15 words"},{"label":"Risk name","description":"1 short sentence max 15 words"},{"label":"Risk name","description":"1 short sentence max 15 words"},{"label":"Risk name","description":"1 short sentence max 15 words"},{"label":"Risk name","description":"1 short sentence max 15 words"}]}`;
 }
@@ -451,10 +453,13 @@ router.get('/research/risks', async (req: Request, res: Response) => {
 
   const start = Date.now();
   try {
-    const profile = await getCompanyProfile(symbol);
+    const [profile, secFilingStatus] = await Promise.all([
+      getCompanyProfile(symbol),
+      getSECFilingStatus(symbol),
+    ]);
     const raw = await withTimeout(
       withRetry(() => callGPT({
-        prompt: buildRiskPrompt(symbol, profile?.name ?? symbol, profile?.industry ?? ''),
+        prompt: buildRiskPrompt(symbol, profile?.name ?? symbol, profile?.industry ?? '', secFilingStatus.status),
         useWebSearch: true, section: 'risks', symbol,
       })),
       SECTION_TIMEOUT_MS,

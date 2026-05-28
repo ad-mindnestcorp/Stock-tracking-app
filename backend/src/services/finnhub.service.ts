@@ -438,7 +438,9 @@ export async function searchSymbols(query: string): Promise<SymbolSearchResult[]
 export interface BasicFinancials {
   peRatioTTM: number | null;
   pbRatioTTM: number | null;
+  psTTM: number | null;
   evEbitdaTTM: number | null;
+  evFcfTTM: number | null;
   roeTTM: number | null;
   revenueGrowthTTMYoy: number | null;
   grossMarginTTM: number | null;
@@ -446,9 +448,24 @@ export interface BasicFinancials {
   debtEquityTTM: number | null;
   currentRatioTTM: number | null;
   freeCashFlowTTM: number | null;
+  freeCashFlowAnnual: number | null;
+  _rawMetricKeys?: string[];
 }
 
-/** Fetch basic financial metrics from Finnhub (cached 10 min) */
+/**
+ * Fetch basic financial metrics from Finnhub (cached 10 min)
+ * 
+ * Finnhub API field names (verified from docs):
+ * - peTTM: P/E ratio
+ * - roeTTM: Return on Equity (as decimal or percent — normalize via safePercent)
+ * - currentRatioAnnual: Current ratio
+ * - grossMarginTTM: Gross margin (as decimal)
+ * - revenueGrowthTTMYoy: Revenue growth YoY (as decimal)
+ * - freeCashFlowAnnual: Free cash flow (absolute value) — preferred over freeCashFlowTTM
+ * - totalDebtToEquityAnnual: Debt/Equity ratio
+ * - evToEbitdaTTM: EV/EBITDA (available on some plans)
+ * - currentEv_freeCashFlowTTM: EV/FCF
+ */
 export async function getBasicFinancials(symbol: string): Promise<BasicFinancials | null> {
   const key = `metrics:${symbol}`;
   const cached = getCached<BasicFinancials>(key);
@@ -462,21 +479,77 @@ export async function getBasicFinancials(symbol: string): Promise<BasicFinancial
     const m = res.data?.metric;
     if (!m) return null;
 
-    const result: BasicFinancials = {
-      peRatioTTM: m.peTTM ?? m.peExclExtraTTM ?? null,
-      pbRatioTTM: m.pbAnnual ?? null,
-      evEbitdaTTM: m.currentEv_freeCashFlowTTM ?? null,
-      roeTTM: m.roeTTM ?? null,
-      revenueGrowthTTMYoy: m.revenueGrowthTTMYoy ?? null,
-      grossMarginTTM: m.grossMarginTTM ?? null,
-      netProfitMarginTTM: m.netProfitMarginTTM ?? null,
-      debtEquityTTM: m.totalDebt_totalEquityAnnual ?? null,
-      currentRatioTTM: m.currentRatioAnnual ?? null,
-      freeCashFlowTTM: m.freeCashFlowTTM ?? null,
+    // Log raw metric keys for debugging
+    const rawKeys = Object.keys(m).filter(k => m[k] !== null && m[k] !== undefined);
+    console.debug(`[finnhub:metrics] ${symbol} — available fields: ${rawKeys.slice(0, 15).join(', ')}${rawKeys.length > 15 ? '...' : ''}`);
+
+    // Safe extraction with validation
+    const safeNum = (val: unknown, field: string): number | null => {
+      if (val === null || val === undefined) return null;
+      if (typeof val !== 'number' || !isFinite(val) || isNaN(val)) {
+        console.debug(`[finnhub:metrics] ${symbol}.${field}: invalid value ${val}`);
+        return null;
+      }
+      return val;
     };
+
+    // For percentage fields stored as decimals (e.g., 0.15 = 15%)
+    const safePercent = (val: unknown, field: string): number | null => {
+      const num = safeNum(val, field);
+      if (num === null) return null;
+      // Finnhub stores margins/returns as decimals, normalize to percent display value
+      // but keep as decimal internally for consistency
+      return num;
+    };
+
+    // EV/EBITDA is in the quarterly series, not the flat metric object
+    const evEbitdaSeries = res.data?.series?.quarterly?.evEbitdaTTM;
+    const evEbitdaFromSeries = Array.isArray(evEbitdaSeries) && evEbitdaSeries.length > 0
+      ? safeNum(evEbitdaSeries[0].v, 'series.evEbitdaTTM')
+      : null;
+
+    // FCF per share TTM is in the quarterly series; multiply by shareOutstanding (in millions)
+    const fcfPerShareSeries = res.data?.series?.quarterly?.fcfPerShareTTM;
+    const fcfPerShareTTM = Array.isArray(fcfPerShareSeries) && fcfPerShareSeries.length > 0
+      ? safeNum(fcfPerShareSeries[0].v, 'series.fcfPerShareTTM')
+      : null;
+    const profile = await getCompanyProfile(symbol);
+    const shareOutstanding = profile?.shareOutstanding ?? null;
+    const freeCashFlowFromSeries = fcfPerShareTTM !== null && shareOutstanding !== null
+      ? fcfPerShareTTM * shareOutstanding * 1_000_000
+      : null;
+
+    const result: BasicFinancials = {
+      peRatioTTM: safeNum(m.peTTM ?? m.peExclExtraTTM, 'peTTM'),
+      pbRatioTTM: safeNum(m.pbAnnual ?? m.pbQuarterly, 'pbAnnual'),
+      psTTM: safeNum(m.psTTM ?? m.psAnnual, 'psTTM'),
+      evEbitdaTTM: evEbitdaFromSeries,
+      evFcfTTM: safeNum(m.currentEv_freeCashFlowTTM, 'evFcfTTM'),
+      roeTTM: safePercent(m.roeTTM, 'roeTTM'),
+      revenueGrowthTTMYoy: safePercent(m.revenueGrowthTTMYoy, 'revenueGrowthTTMYoy'),
+      grossMarginTTM: safePercent(m.grossMarginTTM, 'grossMarginTTM'),
+      netProfitMarginTTM: safePercent(m.netProfitMarginTTM, 'netProfitMarginTTM'),
+      // Field name contains a literal slash — must use bracket notation
+      debtEquityTTM: safeNum(
+        m['totalDebt/totalEquityAnnual'] ?? m['totalDebt/totalEquityQuarterly'] ?? m['longTermDebt/equityAnnual'],
+        'debtEquityTTM'
+      ),
+      currentRatioTTM: safeNum(m.currentRatioAnnual ?? m.currentRatioQuarterly, 'currentRatioTTM'),
+      freeCashFlowTTM: freeCashFlowFromSeries,
+      freeCashFlowAnnual: safeNum(m.freeCashFlowAnnual, 'freeCashFlowAnnual'),
+      _rawMetricKeys: rawKeys,
+    };
+
+    // Log what we extracted
+    const extractedCount = Object.entries(result)
+      .filter(([k, v]) => !k.startsWith('_') && v !== null)
+      .length;
+    console.log(`[finnhub:metrics] ${symbol} — extracted ${extractedCount} metrics`);
+    
     setCached(key, result, TTL.CANDLES_DAILY);
     return result;
-  } catch {
+  } catch (err) {
+    console.warn(`[finnhub:metrics] ${symbol} — ${err instanceof Error ? err.message : err}`);
     return null;
   }
 }

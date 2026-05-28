@@ -1,12 +1,27 @@
 /**
  * Financial Modeling Prep (FMP) API Service
  * Provides analyst estimates, forward metrics, and financial data not available from Finnhub.
+ *
+ * All endpoints use the /stable/ base URL.
+ * Field names verified from live stable API responses:
+ * - /stable/key-metrics-ttm: evToEBITDATTM, priceToSalesRatioTTM, returnOnEquityTTM, freeCashFlowPerShareTTM
+ * - /stable/ratios-ttm: grossProfitMarginTTM, netProfitMarginTTM, revenueGrowthTTM, debtToEquityRatioTTM, currentRatioTTM
  */
 
 import axios from 'axios';
+import { safeNumber, safePercent, validateRatio } from '../utils/metric-mapper';
+import { logApiResponse, logFieldMapping } from '../utils/metrics-logger';
 
-const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
+const FMP_STABLE_URL = 'https://financialmodelingprep.com/stable';
 const FMP_KEY = process.env.FMP_KEY ?? '';
+
+function fmpErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    if (err.response?.status === 403) return '403 Forbidden — endpoint requires a paid FMP plan tier';
+    if (err.response?.status === 429) return '429 Rate Limited — too many requests';
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 const CACHE_TTL_MS = 3600_000; // 1 hour for FMP data
 
@@ -58,6 +73,7 @@ export interface FMPKeyMetrics {
   grossProfitMargin: number | null;
   netProfitMargin: number | null;
   revenueGrowth: number | null;
+  currentRatio: number | null;
   date: string | null;
   available: boolean;
 }
@@ -93,16 +109,10 @@ export interface FMPIncomeStatement {
 }
 
 // ─── Validation Helpers ───────────────────────────────────────────────────────
-
-function validateRatio(value: number | null, min: number, max: number): number | null {
-  if (value === null || value === undefined) return null;
-  if (isNaN(value) || !isFinite(value)) return null;
-  if (value < min || value > max) return null;
-  return value;
-}
+// Now using centralized utilities from metric-mapper.ts
 
 function validatePercent(value: number | null): number | null {
-  return validateRatio(value, -500, 1000); // -500% to 1000%
+  return validateRatio(value, -500, 1000, 'fmp.percent'); // -500% to 1000%
 }
 
 // Helper to check if fiscal data is stale (for future use)
@@ -141,8 +151,8 @@ export async function getFMPRevenueEstimates(symbol: string): Promise<FMPRevenue
   }
 
   try {
-    const res = await axios.get(`${FMP_BASE_URL}/analyst-estimates/${symbol}`, {
-      params: { apikey: FMP_KEY, limit: 4 },
+    const res = await axios.get(`${FMP_STABLE_URL}/analyst-estimates`, {
+      params: { symbol, apikey: FMP_KEY, limit: 4 },
       timeout: 8000,
     });
 
@@ -152,7 +162,7 @@ export async function getFMPRevenueEstimates(symbol: string): Promise<FMPRevenue
       estimatedRevenueLow: number;
       estimatedRevenueHigh: number;
       numberAnalystEstimatedRevenue: number;
-    }[] = res.data ?? [];
+    }[] = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
 
     if (!data.length) {
       setCached(key, base);
@@ -177,13 +187,16 @@ export async function getFMPRevenueEstimates(symbol: string): Promise<FMPRevenue
     setCached(key, result);
     return result;
   } catch (err) {
-    console.warn(`[fmp:revenue_estimates] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:revenue_estimates] ${symbol} — ${fmpErrorMessage(err)}`);
     setCached(key, base);
     return base;
   }
 }
 
 // ─── Key Metrics ──────────────────────────────────────────────────────────────
+// FMP API field names (verified from official docs):
+// - /key-metrics-ttm: enterpriseValueOverEBITDATTM (NOT evToEbitdaTTM!)
+// - /ratios-ttm: grossProfitMarginTTM, revenueGrowthTTM, debtEquityRatioTTM
 
 export async function getFMPKeyMetrics(symbol: string): Promise<FMPKeyMetrics> {
   const key = `fmp:key_metrics:${symbol}`;
@@ -201,6 +214,7 @@ export async function getFMPKeyMetrics(symbol: string): Promise<FMPKeyMetrics> {
     grossProfitMargin: null,
     netProfitMargin: null,
     revenueGrowth: null,
+    currentRatio: null,
     date: null,
     available: false,
   };
@@ -214,58 +228,115 @@ export async function getFMPKeyMetrics(symbol: string): Promise<FMPKeyMetrics> {
   try {
     // Fetch both key-metrics-ttm and ratios-ttm for comprehensive coverage
     const [metricsRes, ratiosRes] = await Promise.all([
-      axios.get(`${FMP_BASE_URL}/key-metrics-ttm/${symbol}`, {
-        params: { apikey: FMP_KEY },
+      axios.get(`${FMP_STABLE_URL}/key-metrics-ttm`, {
+        params: { symbol, apikey: FMP_KEY },
         timeout: 8000,
       }),
-      axios.get(`${FMP_BASE_URL}/ratios-ttm/${symbol}`, {
-        params: { apikey: FMP_KEY },
+      axios.get(`${FMP_STABLE_URL}/ratios-ttm`, {
+        params: { symbol, apikey: FMP_KEY },
         timeout: 8000,
-      }).catch(() => ({ data: [] })), // Fallback if ratios endpoint fails
+      }).catch(() => ({ data: [] })),
     ]);
 
-    const metricsData: {
-      evToEbitdaTTM: number;
-      priceToSalesRatioTTM: number;
-      roeTTM: number;
-      revenuePerShareTTM: number;
-      freeCashFlowPerShareTTM: number;
-      debtToEquityTTM: number;
-    }[] = metricsRes.data ?? [];
+    // Log raw API responses for debugging
+    logApiResponse(symbol, 'fmp', '/stable/key-metrics-ttm', metricsRes.data);
+    logApiResponse(symbol, 'fmp', '/stable/ratios-ttm', ratiosRes.data);
 
-    const ratiosData: {
-      grossProfitMarginTTM?: number;
-      netProfitMarginTTM?: number;
-      revenueGrowthTTM?: number;
-    }[] = ratiosRes.data ?? [];
+    // Stable API returns array with single object for TTM endpoints
+    const metricsData = Array.isArray(metricsRes.data) ? metricsRes.data : (metricsRes.data ? [metricsRes.data] : []);
+    const ratiosData = Array.isArray(ratiosRes.data) ? ratiosRes.data : (ratiosRes.data ? [ratiosRes.data] : []);
 
-    if (!metricsData.length) {
+    if (!metricsData.length || !metricsData[0]) {
       setCached(key, base);
       return base;
     }
 
-    const metrics = metricsData[0];
-    const ratios = ratiosData[0] ?? {};
+    const metrics = metricsData[0] as Record<string, unknown>;
+    const ratios = (ratiosData[0] ?? {}) as Record<string, unknown>;
+
+    // Stable API field names (verified against live /stable/ responses):
+    // EV/EBITDA: "evToEBITDATTM" in key-metrics-ttm
+    const evEbitdaRaw = safeNumber(metrics.evToEBITDATTM, 'fmp.evEbitda');
+
+    // P/S: "priceToSalesRatioTTM" in key-metrics-ttm
+    const psRaw = safeNumber(
+      metrics.priceToSalesRatioTTM ?? ratios.priceToSalesRatioTTM,
+      'fmp.psTTM'
+    );
+
+    // ROE: "returnOnEquityTTM" in key-metrics-ttm (decimal, e.g. 0.15 = 15%)
+    const roeRaw = safePercent(
+      metrics.returnOnEquityTTM ?? ratios.returnOnEquityTTM,
+      'fmp.roeTTM'
+    );
+
+    // Debt/Equity: "debtToEquityRatioTTM" in ratios-ttm
+    const debtEquityRaw = safeNumber(
+      ratios.debtToEquityRatioTTM ?? metrics.debtToEquityTTM,
+      'fmp.debtEquityTTM'
+    );
+
+    // Gross Margin: "grossProfitMarginTTM" in ratios-ttm
+    const grossMarginRaw = safePercent(ratios.grossProfitMarginTTM, 'fmp.grossMarginTTM');
+
+    // Net Profit Margin: "netProfitMarginTTM" in ratios-ttm
+    const netMarginRaw = safePercent(ratios.netProfitMarginTTM, 'fmp.netMarginTTM');
+
+    // Revenue Growth: "revenueGrowthTTM" in ratios-ttm
+    const revenueGrowthRaw = safePercent(ratios.revenueGrowthTTM, 'fmp.revenueGrowthTTM');
+
+    // FCF and Revenue per share: in key-metrics-ttm
+    const fcfPerShareRaw = safeNumber(metrics.freeCashFlowPerShareTTM, 'fmp.fcfPerShareTTM');
+    const revenuePerShareRaw = safeNumber(metrics.revenuePerShareTTM, 'fmp.revenuePerShareTTM');
+
+    // Current Ratio: in ratios-ttm
+    const currentRatioRaw = safeNumber(
+      ratios.currentRatioTTM ?? metrics.currentRatioTTM,
+      'fmp.currentRatioTTM'
+    );
+
+    const mappedFields = {
+      evToEbitda: evEbitdaRaw,
+      priceToSalesRatio: psRaw,
+      returnOnEquity: roeRaw,
+      debtToEquity: debtEquityRaw,
+      grossProfitMargin: grossMarginRaw,
+      netProfitMargin: netMarginRaw,
+      revenueGrowth: revenueGrowthRaw,
+      currentRatio: currentRatioRaw,
+    };
+
+    // Log field mapping for debugging
+    const warnings: string[] = [];
+    if (evEbitdaRaw === null) warnings.push('evToEbitda: not found in API response');
+    if (revenueGrowthRaw === null) warnings.push('revenueGrowth: not found in API response');
+    
+    logFieldMapping(symbol, 'fmp', { ...metrics, ...ratios }, mappedFields, warnings);
 
     const result: FMPKeyMetrics = {
       symbol,
-      evToEbitda: validateRatio(metrics.evToEbitdaTTM, -100, 500),
-      priceToSalesRatio: validateRatio(metrics.priceToSalesRatioTTM, 0, 200),
-      returnOnEquity: validatePercent(metrics.roeTTM),
-      revenuePerShare: metrics.revenuePerShareTTM ?? null,
-      freeCashFlowPerShare: metrics.freeCashFlowPerShareTTM ?? null,
-      debtToEquity: validateRatio(metrics.debtToEquityTTM, 0, 20),
-      grossProfitMargin: validatePercent(ratios.grossProfitMarginTTM ?? null),
-      netProfitMargin: validatePercent(ratios.netProfitMarginTTM ?? null),
-      revenueGrowth: validatePercent(ratios.revenueGrowthTTM ?? null),
+      evToEbitda: validateRatio(evEbitdaRaw, -100, 500, 'fmp.evEbitda'),
+      priceToSalesRatio: validateRatio(psRaw, 0, 200, 'fmp.psTTM'),
+      returnOnEquity: roeRaw,
+      revenuePerShare: revenuePerShareRaw,
+      freeCashFlowPerShare: fcfPerShareRaw,
+      debtToEquity: validateRatio(debtEquityRaw, 0, 50, 'fmp.debtEquity'),
+      grossProfitMargin: grossMarginRaw,
+      netProfitMargin: netMarginRaw,
+      revenueGrowth: revenueGrowthRaw,
+      currentRatio: validateRatio(currentRatioRaw, 0, 20, 'fmp.currentRatio'),
       date: new Date().toISOString().split('T')[0],
-      available: true,
+      available: evEbitdaRaw !== null || psRaw !== null || roeRaw !== null,
     };
+
+    // Log successful extraction
+    console.log(`[fmp:key_metrics] ${symbol} — EV/EBITDA: ${result.evToEbitda ?? 'N/A'}, RevGrowth: ${result.revenueGrowth ?? 'N/A'}%, GrossMargin: ${result.grossProfitMargin ?? 'N/A'}%`);
 
     setCached(key, result);
     return result;
   } catch (err) {
-    console.warn(`[fmp:key_metrics] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    logApiResponse(symbol, 'fmp', '/stable/key-metrics-ttm', null, err instanceof Error ? err : new Error(String(err)));
+    console.warn(`[fmp:key_metrics] ${symbol} — ${fmpErrorMessage(err)}`);
     setCached(key, base);
     return base;
   }
@@ -297,8 +368,8 @@ export async function getFMPAnalystEstimatesFull(symbol: string): Promise<FMPAna
   }
 
   try {
-    const res = await axios.get(`${FMP_BASE_URL}/analyst-estimates/${symbol}`, {
-      params: { apikey: FMP_KEY, limit: 4 },
+    const res = await axios.get(`${FMP_STABLE_URL}/analyst-estimates`, {
+      params: { symbol, apikey: FMP_KEY, limit: 4 },
       timeout: 8000,
     });
 
@@ -310,7 +381,7 @@ export async function getFMPAnalystEstimatesFull(symbol: string): Promise<FMPAna
       estimatedNetIncomeAvg: number;
       estimatedEpsAvg: number;
       numberAnalystsEstimatedEps: number;
-    }[] = res.data ?? [];
+    }[] = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
 
     if (!data.length) {
       setCached(key, base);
@@ -336,7 +407,7 @@ export async function getFMPAnalystEstimatesFull(symbol: string): Promise<FMPAna
     setCached(key, result);
     return result;
   } catch (err) {
-    console.warn(`[fmp:analyst_estimates_full] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:analyst_estimates_full] ${symbol} — ${fmpErrorMessage(err)}`);
     setCached(key, base);
     return base;
   }
@@ -372,8 +443,8 @@ export async function getFMPEnterpriseValue(symbol: string): Promise<FMPEnterpri
   }
 
   try {
-    const res = await axios.get(`${FMP_BASE_URL}/enterprise-values/${symbol}`, {
-      params: { apikey: FMP_KEY, limit: 1 },
+    const res = await axios.get(`${FMP_STABLE_URL}/enterprise-values`, {
+      params: { symbol, apikey: FMP_KEY, limit: 1 },
       timeout: 8000,
     });
 
@@ -381,7 +452,7 @@ export async function getFMPEnterpriseValue(symbol: string): Promise<FMPEnterpri
       date: string;
       enterpriseValue: number;
       marketCapitalization: number;
-    }[] = res.data ?? [];
+    }[] = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
 
     if (!data.length) {
       setCached(key, base);
@@ -401,7 +472,7 @@ export async function getFMPEnterpriseValue(symbol: string): Promise<FMPEnterpri
     setCached(key, result);
     return result;
   } catch (err) {
-    console.warn(`[fmp:enterprise_value] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:enterprise_value] ${symbol} — ${fmpErrorMessage(err)}`);
     setCached(key, base);
     return base;
   }
@@ -420,12 +491,12 @@ export async function getFMPHistoricalMarketCap(symbol: string, years = 5): Prom
   }
 
   try {
-    const res = await axios.get(`${FMP_BASE_URL}/historical-market-capitalization/${symbol}`, {
-      params: { apikey: FMP_KEY, limit: years * 365 },
+    const res = await axios.get(`${FMP_STABLE_URL}/historical-market-capitalization`, {
+      params: { symbol, apikey: FMP_KEY, limit: years * 365 },
       timeout: 10000,
     });
 
-    const data: { date: string; marketCap: number }[] = res.data ?? [];
+    const data: { date: string; marketCap: number }[] = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
 
     if (!data.length) {
       setCached(key, []);
@@ -444,7 +515,7 @@ export async function getFMPHistoricalMarketCap(symbol: string, years = 5): Prom
     setCached(key, result, CACHE_TTL_MS * 24); // Cache for 24 hours
     return result;
   } catch (err) {
-    console.warn(`[fmp:historical_mcap] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:historical_mcap] ${symbol} — ${fmpErrorMessage(err)}`);
     return [];
   }
 }
@@ -462,8 +533,8 @@ export async function getFMPIncomeStatements(symbol: string, years = 5): Promise
   }
 
   try {
-    const res = await axios.get(`${FMP_BASE_URL}/income-statement/${symbol}`, {
-      params: { apikey: FMP_KEY, limit: years * 4 }, // Quarterly data
+    const res = await axios.get(`${FMP_STABLE_URL}/income-statement`, {
+      params: { symbol, apikey: FMP_KEY, limit: years * 4 }, // Quarterly data
       timeout: 10000,
     });
 
@@ -476,7 +547,7 @@ export async function getFMPIncomeStatements(symbol: string, years = 5): Promise
       netIncome: number;
       calendarYear: string;
       period: string;
-    }[] = res.data ?? [];
+    }[] = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
 
     if (!data.length) {
       setCached(key, []);
@@ -498,7 +569,7 @@ export async function getFMPIncomeStatements(symbol: string, years = 5): Promise
     setCached(key, result, CACHE_TTL_MS * 24); // Cache for 24 hours
     return result;
   } catch (err) {
-    console.warn(`[fmp:income_statements] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:income_statements] ${symbol} — ${fmpErrorMessage(err)}`);
     return [];
   }
 }
@@ -571,7 +642,7 @@ export async function getFMPEbitdaMargin(symbol: string): Promise<FMPEbitdaMargi
     setCached(key, result);
     return result;
   } catch (err) {
-    console.warn(`[fmp:ebitda_margin] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:ebitda_margin] ${symbol} — ${fmpErrorMessage(err)}`);
     setCached(key, base);
     return base;
   }
@@ -673,7 +744,111 @@ export async function getFMPForwardPSData(symbol: string, currentMarketCapB: num
     setCached(key, result);
     return result;
   } catch (err) {
-    console.warn(`[fmp:forward_ps] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    console.warn(`[fmp:forward_ps] ${symbol} — ${fmpErrorMessage(err)}`);
+    setCached(key, base);
+    return base;
+  }
+}
+
+// ─── Comprehensive Metrics (Stable API) ───────────────────────────────────────
+// Uses /stable endpoints per API reference documentation.
+// Field mapping (verified from docs):
+//   ratios-ttm:              returnOnEquityTTM, currentRatioTTM, debtEquityRatioTTM, grossProfitMarginTTM
+//   key-metrics-ttm:         peRatioTTM, enterpriseValueOverEBITDATTM
+//   income-statement-growth: growthRevenue (decimal → multiply by 100 for %)
+//   cash-flow-statement:     freeCashFlow (absolute USD)
+
+export interface FMPComprehensiveMetrics {
+  symbol: string;
+  peRatio: number | null;
+  evEbitda: number | null;
+  roe: number | null;           // percent (e.g. 150.6)
+  currentRatio: number | null;
+  debtEquity: number | null;
+  grossMargin: number | null;   // percent (e.g. 46.2)
+  revenueGrowth: number | null; // percent (e.g. 6.1)
+  freeCashFlow: number | null;  // absolute USD
+  available: boolean;
+}
+
+export async function getComprehensiveMetrics(symbol: string): Promise<FMPComprehensiveMetrics> {
+  const key = `fmp:comprehensive:${symbol}`;
+  const cached = getCached<FMPComprehensiveMetrics>(key);
+  if (cached) return cached;
+
+  const base: FMPComprehensiveMetrics = {
+    symbol,
+    peRatio: null,
+    evEbitda: null,
+    roe: null,
+    currentRatio: null,
+    debtEquity: null,
+    grossMargin: null,
+    revenueGrowth: null,
+    freeCashFlow: null,
+    available: false,
+  };
+
+  if (!FMP_KEY) {
+    console.warn('[fmp:comprehensive] FMP_KEY not configured');
+    setCached(key, base);
+    return base;
+  }
+
+  try {
+    const [ratiosRes, metricsRes, growthRes, cashflowRes] = await Promise.all([
+      axios.get(`${FMP_STABLE_URL}/ratios-ttm`, {
+        params: { symbol, apikey: FMP_KEY },
+        timeout: 8000,
+      }),
+      axios.get(`${FMP_STABLE_URL}/key-metrics-ttm`, {
+        params: { symbol, apikey: FMP_KEY },
+        timeout: 8000,
+      }),
+      axios.get(`${FMP_STABLE_URL}/income-statement-growth`, {
+        params: { symbol, limit: 1, apikey: FMP_KEY },
+        timeout: 8000,
+      }),
+      axios.get(`${FMP_STABLE_URL}/cash-flow-statement`, {
+        params: { symbol, limit: 1, apikey: FMP_KEY },
+        timeout: 8000,
+      }),
+    ]);
+
+    const ratios = (Array.isArray(ratiosRes.data) ? ratiosRes.data[0] : ratiosRes.data) as Record<string, unknown> ?? {};
+    const metrics = (Array.isArray(metricsRes.data) ? metricsRes.data[0] : metricsRes.data) as Record<string, unknown> ?? {};
+    const growth = (Array.isArray(growthRes.data) ? growthRes.data[0] : growthRes.data) as Record<string, unknown> ?? {};
+    const cashflow = (Array.isArray(cashflowRes.data) ? cashflowRes.data[0] : cashflowRes.data) as Record<string, unknown> ?? {};
+
+    const revenueGrowthRaw = safeNumber(growth.growthRevenue, 'fmp.stable.growthRevenue');
+
+    // Actual stable API field names (verified against live responses — differ from FMP docs):
+    //   ratios-ttm:    priceToEarningsRatioTTM, debtToEquityRatioTTM, grossProfitMarginTTM, currentRatioTTM
+    //   key-metrics-ttm: evToEBITDATTM, returnOnEquityTTM (decimal, e.g. 0.0625 = 6.25%)
+    const result: FMPComprehensiveMetrics = {
+      symbol,
+      peRatio: validateRatio(safeNumber(ratios.priceToEarningsRatioTTM, 'fmp.stable.peRatio'), -500, 1000, 'fmp.stable.peRatio'),
+      evEbitda: validateRatio(safeNumber(metrics.evToEBITDATTM, 'fmp.stable.evEbitda'), -100, 500, 'fmp.stable.evEbitda'),
+      roe: safePercent(metrics.returnOnEquityTTM, 'fmp.stable.roeTTM'),
+      currentRatio: validateRatio(safeNumber(ratios.currentRatioTTM, 'fmp.stable.currentRatioTTM'), 0, 20, 'fmp.stable.currentRatioTTM'),
+      debtEquity: validateRatio(safeNumber(ratios.debtToEquityRatioTTM, 'fmp.stable.debtEquityRatioTTM'), 0, 50, 'fmp.stable.debtEquityRatioTTM'),
+      grossMargin: safePercent(ratios.grossProfitMarginTTM, 'fmp.stable.grossProfitMarginTTM'),
+      revenueGrowth: revenueGrowthRaw !== null ? Math.round(revenueGrowthRaw * 100 * 100) / 100 : null,
+      freeCashFlow: safeNumber(cashflow.freeCashFlow, 'fmp.stable.freeCashFlow'),
+      available: false,
+    };
+
+    result.available = [
+      result.peRatio, result.evEbitda, result.roe, result.currentRatio,
+      result.debtEquity, result.grossMargin, result.revenueGrowth, result.freeCashFlow,
+    ].some(v => v !== null);
+
+    console.log(`[fmp:comprehensive] ${symbol} — PE: ${result.peRatio ?? 'N/A'}, EV/EBITDA: ${result.evEbitda ?? 'N/A'}, ROE: ${result.roe ?? 'N/A'}%, RevGrowth: ${result.revenueGrowth ?? 'N/A'}%, FCF: ${result.freeCashFlow ?? 'N/A'}`);
+
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    console.warn(`[fmp:comprehensive] ${symbol} — ${fmpErrorMessage(err)}`);
     setCached(key, base);
     return base;
   }

@@ -166,6 +166,97 @@ function extractCustomerConcentration(text: string): {
   return result;
 }
 
+// ─── Main: Get SEC Filing Status ──────────────────────────────────────────────
+
+export interface SECFilingStatus {
+  status: string;
+  source: string | null;
+}
+
+const SEC_RISK_KEYWORDS = [
+  { pattern: /dismissed/i, label: 'dismissed' },
+  { pattern: /wells\s+notice/i, label: 'Wells Notice' },
+  { pattern: /subpoena/i, label: 'subpoena' },
+  { pattern: /enforcement\s+action/i, label: 'enforcement action' },
+  { pattern: /SEC\s+investigation/i, label: 'SEC investigation' },
+  { pattern: /securities\s+class\s+action/i, label: 'securities class action' },
+];
+
+export async function getSECFilingStatus(symbol: string): Promise<SECFilingStatus> {
+  const key = `sec:filing_status:${symbol}`;
+  const cached = getCached<SECFilingStatus>(key);
+  if (cached) return cached;
+
+  const base: SECFilingStatus = {
+    status: 'No active SEC enforcement disclosed in recent 10-K',
+    source: null,
+  };
+
+  try {
+    const cik = await getCIKFromTicker(symbol);
+    if (!cik) {
+      setCached(key, base);
+      return base;
+    }
+
+    const filings = await getRecentFilings(cik, '10-K', 1);
+    if (!filings.length) {
+      setCached(key, base);
+      return base;
+    }
+
+    const filing = filings[0];
+    const accessionNoFormatted = filing.accessionNumber.replace(/-/g, '');
+    const docUrl = `${SEC_BASE_URL}/Archives/edgar/data/${cik}/${accessionNoFormatted}/${filing.primaryDocument}`;
+
+    const docRes = await axios.get(docUrl, {
+      headers: { 'User-Agent': SEC_USER_AGENT },
+      timeout: 15000,
+      maxContentLength: 10_000_000,
+    });
+
+    const text = docRes.data as string;
+
+    // Search for risk factors section (~10000 chars)
+    const lowerText = text.toLowerCase();
+    const riskStart = lowerText.indexOf('risk factor');
+    const searchExcerpt = riskStart !== -1
+      ? text.substring(riskStart, riskStart + 10000)
+      : text.substring(0, 10000);
+
+    const source = `${filing.form} filed ${filing.filingDate}`;
+
+    // Check dismissed first (takes priority — means past action resolved)
+    if (SEC_RISK_KEYWORDS[0].pattern.test(searchExcerpt)) {
+      const result: SECFilingStatus = {
+        status: 'Previous SEC case dismissed (per 10-K risk factors)',
+        source,
+      };
+      setCached(key, result);
+      return result;
+    }
+
+    // Check remaining risk keywords
+    const found = SEC_RISK_KEYWORDS.slice(1).find(k => k.pattern.test(searchExcerpt));
+    if (found) {
+      const result: SECFilingStatus = {
+        status: `Active SEC enforcement disclosed in recent 10-K (${found.label})`,
+        source,
+      };
+      setCached(key, result);
+      return result;
+    }
+
+    const result: SECFilingStatus = { status: base.status, source };
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    console.warn(`[sec:filing_status] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    setCached(key, base);
+    return base;
+  }
+}
+
 // ─── Main: Get Customer Concentration ─────────────────────────────────────────
 
 export async function getCustomerConcentration(symbol: string): Promise<CustomerConcentrationData> {

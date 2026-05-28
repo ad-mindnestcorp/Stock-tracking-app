@@ -157,7 +157,7 @@ function RiskDetail({ data }: { data: AIRiskRedTeaming }) {
       <SectionBlock title="Bear Case">
         <BulletList items={data.bear_case} />
       </SectionBlock>
-      <SectionBlock title="SEC Filing Flags">
+      <SectionBlock title="SEC Status">
         <BulletList items={data.sec_flags} />
       </SectionBlock>
       <SectionBlock title="Customer Concentration">

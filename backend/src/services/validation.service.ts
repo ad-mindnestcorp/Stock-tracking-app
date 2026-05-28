@@ -17,15 +17,15 @@ export interface InputValidationResult {
 
 const INPUT_RANGES: Record<string, { min: number; max: number }> = {
   implied_volatility: { min: 0, max: 500 },
-  gross_margin: { min: -1, max: 1 },
-  net_margin: { min: -1, max: 1 },
-  revenue_growth: { min: -1, max: 10 },
-  roe: { min: -5, max: 5 },
-  ebitda_margin: { min: -1, max: 1 },
-  ps_ratio: { min: 0, max: 200 },          // Updated: 0-200
+  gross_margin: { min: -100, max: 100 },
+  net_margin: { min: -100, max: 100 },
+  revenue_growth: { min: -100, max: 1000 },
+  roe: { min: -500, max: 500 },
+  ebitda_margin: { min: -100, max: 100 },
+  ps_ratio: { min: 0, max: 200 },
   pe_ratio: { min: -2000, max: 10000 },
-  ev_ebitda: { min: -100, max: 500 },      // Updated: -100 to 500
-  debt_equity: { min: 0, max: 20 },        // Updated: 0-20
+  ev_ebitda: { min: -100, max: 500 },
+  debt_equity: { min: 0, max: 20 },
   rule_of_40: { min: -200, max: 1000 },
 };
 
