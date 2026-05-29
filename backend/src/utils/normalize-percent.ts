@@ -44,7 +44,7 @@ export function normalizePercent(
   }
 
   // Validate range: -1000% to 1000%
-  if (normalized < -1000 || normalized > 1000) {
+  if (normalized < -10000 || normalized > 10000) {
     return {
       value: null,
       display: DATA_NOT_AVAILABLE,

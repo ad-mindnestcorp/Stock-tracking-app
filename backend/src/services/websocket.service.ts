@@ -13,6 +13,8 @@ const latestPrices = new Map<string, number>();
 
 let finnhubWs: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectDelay = 5000;
+let isRateLimited = false;
 
 function subscribeFinnhub(symbol: string) {
   if (finnhubWs?.readyState === WebSocket.OPEN) {
@@ -37,6 +39,8 @@ function connectFinnhub() {
 
   finnhubWs.on('open', () => {
     console.log('[finnhub-ws] Connected');
+    reconnectDelay = 5000;
+    isRateLimited = false;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -77,12 +81,22 @@ function connectFinnhub() {
   });
 
   finnhubWs.on('close', () => {
-    console.log('[finnhub-ws] Disconnected — reconnecting in 5 s');
     finnhubWs = null;
-    reconnectTimer = setTimeout(connectFinnhub, 5000);
+    if (isRateLimited) {
+      // Back off 60 s on rate-limit, then reset
+      console.warn(`[finnhub-ws] Rate-limited — retrying in 60 s`);
+      reconnectTimer = setTimeout(connectFinnhub, 60_000);
+    } else {
+      reconnectDelay = Math.min(reconnectDelay * 2, 60_000);
+      console.log(`[finnhub-ws] Disconnected — reconnecting in ${reconnectDelay / 1000} s`);
+      reconnectTimer = setTimeout(connectFinnhub, reconnectDelay);
+    }
   });
 
   finnhubWs.on('error', (err) => {
+    if (err.message.includes('429')) {
+      isRateLimited = true;
+    }
     console.error('[finnhub-ws] Error:', err.message);
     finnhubWs?.terminate();
   });

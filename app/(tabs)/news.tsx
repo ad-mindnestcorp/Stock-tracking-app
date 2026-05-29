@@ -29,7 +29,7 @@ export default function NewsScreen() {
     setRefreshing(true);
     try {
       await queryClient.invalidateQueries({ queryKey: ['marketNews'] });
-      await queryClient.invalidateQueries({ queryKey: ['earnings'] });
+      await queryClient.invalidateQueries({ queryKey: ['market', 'earnings-calendar'] });
     } finally {
       setRefreshing(false);
     }

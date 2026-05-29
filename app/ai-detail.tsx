@@ -139,7 +139,7 @@ function ValuationDetail({ data }: { data: AIValuationFinancials }) {
           <View style={styles.metricsGrid}>
             {data.metrics.map((m, i) => (
               <View key={i} style={styles.metricCell}>
-                <Text style={styles.metricValue}>{m.value}</Text>
+                <Text style={styles.metricValue}>{m.value === 'DATA_NOT_AVAILABLE' ? 'N/A' : m.value}</Text>
                 <Text style={styles.metricLabel}>{m.label}</Text>
                 <Text style={styles.metricNote}>{m.note}</Text>
               </View>
