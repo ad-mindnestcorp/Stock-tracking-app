@@ -84,6 +84,15 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="earnings"
+        options={{
+          title: 'Earnings',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="calendar" color={color} focused={focused} />
+          ),
+        }}
+      />
       <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="transactions" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />

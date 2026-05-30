@@ -1,5 +1,5 @@
-import cron from 'node-cron';
-import { runAllAlertChecks } from './alert.service';
+import cron from "node-cron";
+import { runAllAlertChecks } from "./alert.service";
 
 let isRunning = false;
 
@@ -8,9 +8,9 @@ export function startScheduler(): void {
   // Every 5 minutes, Mon–Fri, 9:30am–4:00pm ET (14:30–21:00 UTC)
   // '*/5 14-20 * * 1-5' = every 5 min, 14:00–20:55 UTC, weekdays
   // Extended to 13:30–21:05 to catch pre/post market edges
-  cron.schedule('*/5 * * * 1-5', async () => {
+  cron.schedule("*/5 * * * 1-5", async () => {
     if (isRunning) {
-      console.log('Previous check still running, skipping...');
+      console.log("Previous check still running, skipping...");
       return;
     }
     isRunning = true;
@@ -21,13 +21,13 @@ export function startScheduler(): void {
     }
   });
 
-  console.log('Scheduler started — alert checks every 5 minutes (weekdays)');
+  console.log("Scheduler started — alert checks every 5 minutes (weekdays)");
 }
 
 /** Manually trigger a check immediately (useful for testing) */
 export async function triggerNow(): Promise<void> {
   if (isRunning) {
-    console.log('Check already in progress.');
+    console.log("Check already in progress.");
     return;
   }
   isRunning = true;
