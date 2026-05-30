@@ -66,6 +66,18 @@ export interface EarningsCalendarItem {
   quarter: number;
 }
 
+/** Company profile returned by Finnhub /stock/profile2 */
+export interface CompanyProfile {
+  ticker: string;
+  name: string;
+  exchange: string;
+  marketCapitalization: number; // in $M
+  logo: string;
+  finnhubIndustry: string;
+  weburl: string;
+  country: string;
+}
+
 export interface EconomicCalendarItem {
   country: string;
   event: string;
@@ -93,6 +105,28 @@ export async function fetchEarningsCalendar(
     { from, to }
   );
   return data?.earningsCalendar ?? [];
+}
+
+// Module-level profile cache with 1-hour TTL to minimise API calls
+const _profileCache = new Map<string, { data: CompanyProfile; expiresAt: number }>();
+const PROFILE_CACHE_TTL_MS = 60 * 60_000;
+
+/** Returns null if the symbol is not found or the request fails silently. */
+export async function fetchCompanyProfile(
+  symbol: string
+): Promise<CompanyProfile | null> {
+  const cached = _profileCache.get(symbol);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
+  try {
+    const data = await finnhub<Partial<CompanyProfile>>('/stock/profile2', { symbol });
+    if (!data?.ticker) return null;
+    const profile = data as CompanyProfile;
+    _profileCache.set(symbol, { data: profile, expiresAt: Date.now() + PROFILE_CACHE_TTL_MS });
+    return profile;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchEconomicCalendar(): Promise<EconomicCalendarItem[]> {

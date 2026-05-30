@@ -10,14 +10,14 @@ import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import TabSwitcher from '@/components/home/tab-switcher';
 import NewsList from '@/components/home/news-list';
-import EarningsTodayGrid from '@/components/home/earnings-today-grid';
+import ImportantEarnings from '@/components/home/important-earnings';
 import { HOME } from '@/components/home/home-tokens';
 
 type Tab = 'news' | 'earnings';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'news', label: 'Market News' },
-  { key: 'earnings', label: 'Earnings Today' },
+  { key: 'earnings', label: 'Important Earnings' },
 ];
 
 export default function NewsScreen() {
@@ -30,6 +30,7 @@ export default function NewsScreen() {
     try {
       await queryClient.invalidateQueries({ queryKey: ['marketNews'] });
       await queryClient.invalidateQueries({ queryKey: ['market', 'earnings-calendar'] });
+      await queryClient.invalidateQueries({ queryKey: ['important-earnings'] });
     } finally {
       setRefreshing(false);
     }
@@ -61,7 +62,7 @@ export default function NewsScreen() {
         {activeTab === 'news' ? (
           <NewsList limit={30} />
         ) : (
-          <EarningsTodayGrid />
+          <ImportantEarnings />
         )}
       </ScrollView>
     </SafeAreaView>
