@@ -87,6 +87,15 @@ export interface StockDetail extends StockQuote {
   isOversold: boolean;
   rsiTrend?: 'up' | 'down' | 'flat';
   previousRsi?: number | null;
+  ma50?: number | null;
+  ma200?: number | null;
+  ma50Trend?: 'green' | 'red' | null;
+  ma200Trend?: 'green' | 'red' | null;
+  supportLevel?: number | null;
+  resistanceLevel?: number | null;
+  srSignal?: 'near_support' | 'near_resistance' | null;
+  relativeVolume?: number | null;
+  momentumScore?: number | null;
 }
 
 export interface WatchlistStock {
@@ -308,6 +317,42 @@ export const aiApi = {
       {},
       AI_SECTION_TIMEOUT_MS
     ),
+};
+
+// ─── News ─────────────────────────────────────────────────────────────────────
+
+export type NewsImportance = 0 | 1 | 2;
+export type NewsProvider = 'benzinga' | 'fmp' | 'finnhub';
+export type NewsFilter = 'my_stocks' | 'markets' | 'earnings' | 'economy';
+
+export interface NewsArticle {
+  id: string;
+  headline: string;
+  source: string;
+  provider: NewsProvider;
+  url: string;
+  publishedAt: string;
+  tickers: string[];
+  summary?: string;
+  importance: NewsImportance;
+  score: number;
+  tickerChanges: Record<string, number>;
+}
+
+export interface NewsResponse {
+  topStories: NewsArticle[];
+  moreNews: NewsArticle[];
+  fetchedAt: string;
+}
+
+export const newsApi = {
+  getFeed: (params?: { tickers?: string; filter?: NewsFilter }) => {
+    const qs = new URLSearchParams();
+    if (params?.tickers) qs.set('tickers', params.tickers);
+    if (params?.filter) qs.set('filter', params.filter);
+    const query = qs.toString();
+    return request<NewsResponse>(`/api/news${query ? `?${query}` : ''}`);
+  },
 };
 
 // ─── Push token ───────────────────────────────────────────────────────────────

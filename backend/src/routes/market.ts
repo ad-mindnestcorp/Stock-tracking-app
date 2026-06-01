@@ -4,6 +4,7 @@ import {
   getYahooQuote,
   getBatchQuotes,
   getDailyCandles,
+  getDailyCandlesFromYahoo,
   getIntradayCandles,
   getCompanyProfile,
   getWeek52Data,
@@ -11,6 +12,9 @@ import {
   POPULAR_SYMBOLS,
 } from '../services/finnhub.service';
 import { calculateRSI } from '../services/rsi.service';
+import { calculateDMA } from '../services/dma.service';
+import { calculateSupportResistance } from '../services/support-resistance.service';
+import { calculateMomentum } from '../services/momentum.service';
 import { getUnusualVolumeStocks } from '../services/polygon.service';
 
 // ─── Index ticker cards (Home screen Feature 1) ──────────────────────────────
@@ -68,6 +72,18 @@ router.get('/detail/:symbol', async (req: Request, res: Response) => {
     ]);
 
     const rsiResult = week52 ? calculateRSI(week52.closes) : null;
+    const dmaResult = week52 && quote ? calculateDMA(week52.closes, quote.currentPrice) : null;
+    const srResult =
+      week52?.recentLows && week52?.recentHighs && quote
+        ? calculateSupportResistance(week52.recentLows, week52.recentHighs, quote.currentPrice)
+        : null;
+    const relativeVolume =
+      quote?.volume != null && week52?.avgVolume != null && week52.avgVolume > 0
+        ? quote.volume / week52.avgVolume
+        : null;
+    const momentumScore = week52
+      ? calculateMomentum(rsiResult?.rsi ?? null, week52.closes, relativeVolume)
+      : null;
 
     return res.json({
       ...quote,
@@ -78,6 +94,15 @@ router.get('/detail/:symbol', async (req: Request, res: Response) => {
       isOverbought: rsiResult?.isOverbought ?? false,
       isOversold: rsiResult?.isOversold ?? false,
       rsiTrend: rsiResult?.rsiTrend ?? 'flat',
+      ma50: dmaResult?.ma50 ?? null,
+      ma200: dmaResult?.ma200 ?? null,
+      ma50Trend: dmaResult?.ma50Trend ?? null,
+      ma200Trend: dmaResult?.ma200Trend ?? null,
+      supportLevel: srResult?.support ?? null,
+      resistanceLevel: srResult?.resistance ?? null,
+      srSignal: srResult?.signal ?? null,
+      relativeVolume,
+      momentumScore,
     });
   } catch (err) {
     console.error(`Detail fetch failed for ${symbol}:`, err);
@@ -100,6 +125,7 @@ router.get('/candles/:symbol', async (req: Request, res: Response) => {
       };
       const days = daysMap[range] ?? 30;
       candles = await getDailyCandles(symbol, days);
+      if (!candles) candles = await getDailyCandlesFromYahoo(symbol, days);
     }
 
     if (!candles) return res.status(404).json({ error: 'No candle data available' });

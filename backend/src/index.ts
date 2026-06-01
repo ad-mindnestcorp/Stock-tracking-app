@@ -1,5 +1,7 @@
-import cors from "cors";
 import dotenv from "dotenv";
+dotenv.config();
+
+import cors from "cors";
 import express from "express";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
@@ -7,6 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import aiRouter from "./routes/ai";
 import alertsRouter from "./routes/alerts";
 import marketRouter from "./routes/market";
+import newsRouter from "./routes/news";
 import pushTokenRouter from "./routes/push-token";
 import stocksRouter from "./routes/stocks";
 import watchlistsRouter from "./routes/watchlists";
@@ -20,8 +23,6 @@ import {
     removeClientSubscription,
 } from "./services/websocket.service";
 
-dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT ?? 3000;
 
@@ -32,6 +33,7 @@ app.use("/api/stocks", stocksRouter);
 app.use("/api/watchlists", watchlistsRouter);
 app.use("/api/alerts", alertsRouter);
 app.use("/api/market", marketRouter);
+app.use("/api/news", newsRouter);
 app.use("/api/push-token", pushTokenRouter);
 app.use("/api/ai", aiRouter);
 

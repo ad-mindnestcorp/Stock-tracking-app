@@ -307,6 +307,36 @@ export async function getYahooDailyCloses(
   }
 }
 
+/** Fetch daily OHLCV candles from Yahoo Finance as a fallback, returning full CandleData */
+export async function getDailyCandlesFromYahoo(symbol: string, days: number): Promise<CandleData | null> {
+  if (symbol.includes(':')) return null; // skip Finnhub-only symbols like BINANCE:BTCUSDT
+  const key = `yahoo:candles:${symbol}:${days}`;
+  const cached = getCached<CandleData>(key);
+  if (cached) return cached;
+
+  try {
+    const period1 = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const period2 = new Date();
+    const rows = await getYF().historical(symbol, { period1, period2, interval: '1d' });
+    if (!rows || rows.length < 2) return null;
+
+    const now = Math.floor(Date.now() / 1000);
+    const daySeconds = 24 * 60 * 60;
+    const candles: CandleData = {
+      timestamps: rows.map((_, i) => now - (rows.length - 1 - i) * daySeconds),
+      open: rows.map((r) => r.close ?? 0),
+      high: rows.map((r) => r.high ?? r.close ?? 0),
+      low: rows.map((r) => r.low ?? r.close ?? 0),
+      close: rows.map((r) => r.close ?? 0),
+      volume: rows.map((r) => r.volume ?? 0),
+    };
+    setCached(key, candles, TTL.CANDLES_DAILY);
+    return candles;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch daily OHLC from Yahoo Finance as a fallback (no API key needed) */
 async function getDailyDataFromYahoo(symbol: string, days = 365): Promise<Week52Data | null> {
   try {

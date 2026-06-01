@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import IndexCardsRow from '@/components/home/index-cards-row';
 import HeatmapCalendarPanel from '@/components/home/heatmap-calendar-panel';
 import TopMoversPanel from '@/components/home/top-movers-panel';
-import EarningsNewsPanel from '@/components/home/earnings-news-panel';
 import { HOME } from '@/components/home/home-tokens';
 
 export default function HomeScreen() {
@@ -49,7 +48,6 @@ export default function HomeScreen() {
         <IndexCardsRow />
         <HeatmapCalendarPanel />
         <TopMoversPanel />
-        <EarningsNewsPanel />
       </ScrollView>
     </SafeAreaView>
   );
