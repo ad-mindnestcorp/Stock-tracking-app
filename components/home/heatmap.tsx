@@ -16,9 +16,9 @@ const TOP_SECTORS = [
 ];
 
 export default function Heatmap() {
-  const { data, isLoading, isError, refetch } = useSectors();
+  const { data, isLoading, isError, error, refetch } = useSectors();
 
-  if (isError) return <SectionError onRetry={() => refetch()} />;
+  if (isError) return <SectionError message={error?.message} onRetry={() => refetch()} />;
 
   if (isLoading || !data) {
     return (

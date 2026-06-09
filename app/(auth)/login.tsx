@@ -9,23 +9,28 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { useMemo } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
 import { loginSchema, type LoginFormValues } from '@/lib/schemas';
 import { toast } from '@/lib/toast';
 import { useTheme } from '@/context/theme-context';
 import { Radius } from '@/constants/theme';
 
+WebBrowser.maybeCompleteAuthSession();
+
 export default function LoginScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const {
     control,
@@ -53,11 +58,57 @@ export default function LoginScreen() {
     router.push('/(auth)/forgot-password');
   };
 
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const redirectUrl = Linking.createURL('auth/callback');
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      });
+
+      if (error) throw error;
+      if (!data.url) throw new Error('No OAuth URL returned from Supabase.');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+      if (result.type === 'success') {
+        const url = result.url;
+        const codeMatch = url.match(/[?&]code=([^&]+)/);
+        if (codeMatch?.[1]) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(
+            decodeURIComponent(codeMatch[1])
+          );
+          if (exchangeError) throw exchangeError;
+        } else {
+          const fragment = url.split('#')[1] ?? '';
+          const params = new URLSearchParams(fragment);
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token) {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token,
+              refresh_token: refresh_token ?? '',
+            });
+            if (sessionError) throw sessionError;
+          }
+        }
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Google sign-in failed.';
+      toast.error(message, 'Google sign-in error');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
@@ -155,16 +206,35 @@ export default function LoginScreen() {
         <TouchableOpacity
           style={[styles.primaryBtn, loading && styles.btnDisabled]}
           onPress={handleSubmit(onLogin)}
-          disabled={loading}
+          disabled={loading || googleLoading}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel={loading ? 'Signing in…' : 'Sign in'}
-          accessibilityState={{ disabled: loading, busy: loading }}
+          accessibilityState={{ disabled: loading || googleLoading, busy: loading }}
         >
           {loading ? (
             <ActivityIndicator color={colors.onPrimary} accessibilityElementsHidden />
           ) : (
             <Text style={styles.primaryBtnText}>Login</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Google OAuth button */}
+        <TouchableOpacity
+          style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={loading || googleLoading}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Continue with Google"
+        >
+          {googleLoading ? (
+            <ActivityIndicator color={colors.textPrimary} />
+          ) : (
+            <>
+              <GoogleIcon />
+              <Text style={styles.googleBtnText}>Continue with Google</Text>
+            </>
           )}
         </TouchableOpacity>
 
@@ -180,20 +250,48 @@ export default function LoginScreen() {
           <Text style={styles.outlineBtnText}>Registration</Text>
         </TouchableOpacity>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
+function GoogleIcon() {
+  return (
+    <View style={googleIconStyles.container}>
+      <Text style={[googleIconStyles.letter, { color: '#4285F4' }]}>G</Text>
+    </View>
+  );
+}
+
+const googleIconStyles = StyleSheet.create({
+  container: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  letter: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
+
 function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
   return StyleSheet.create({
-    container: {
+    safe: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
     },
     scroll: {
       flexGrow: 1,
       paddingHorizontal: 24,
-      paddingTop: 64,
+      paddingTop: 16,
       paddingBottom: 40,
     },
 
@@ -273,7 +371,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       borderRadius: Radius.full,
       paddingVertical: 16,
       alignItems: 'center',
-      marginBottom: 20,
+      marginBottom: 14,
     },
     btnDisabled: {
       opacity: 0.7,
@@ -282,6 +380,22 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       fontSize: 16,
       fontWeight: '700',
       color: colors.onPrimary,
+    },
+
+    googleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      borderRadius: Radius.full,
+      paddingVertical: 15,
+      marginBottom: 20,
+    },
+    googleBtnText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textPrimary,
     },
 
     dividerText: {

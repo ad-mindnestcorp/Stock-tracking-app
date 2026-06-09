@@ -253,7 +253,7 @@ export default function ImportantEarnings() {
   if (error) {
     return (
       <SectionError
-        message="Unable to load earnings data"
+        message={error instanceof Error ? error.message : 'Unable to load earnings data'}
         onRetry={refetch}
         style={{ marginTop: 12 }}
       />

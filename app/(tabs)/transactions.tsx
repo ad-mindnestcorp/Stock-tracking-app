@@ -4,9 +4,9 @@ import {
   StyleSheet,
   SectionList,
   RefreshControl,
-  SafeAreaView,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAlerts } from '@/hooks/use-alerts';
@@ -61,7 +61,7 @@ export default function TransactionsScreen() {
   const sections = useMemo(() => groupByDate(alerts), [alerts]);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Alert History</Text>
         <Text style={styles.subtitle}>All triggered signals</Text>

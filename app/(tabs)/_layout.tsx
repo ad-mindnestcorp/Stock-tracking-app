@@ -1,6 +1,7 @@
 import { Tabs, Redirect } from 'expo-router';
-import { StyleSheet, View, Platform, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/theme-context';
 import { useAuth } from '@/context/auth';
 
@@ -18,6 +19,7 @@ function TabIcon({ name, color, focused }: { name: IconName; color: string; focu
 export default function TabLayout() {
   const { session, loading } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   if (loading) {
     return (
@@ -38,8 +40,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopWidth: 0,
-          height: Platform.OS === 'ios' ? 84 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+          height: 56 + insets.bottom,
+          paddingBottom: insets.bottom || 8,
           paddingTop: 8,
         },
         tabBarShowLabel: true,

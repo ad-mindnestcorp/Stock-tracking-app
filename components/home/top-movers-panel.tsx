@@ -42,6 +42,7 @@ export default function TopMoversPanel() {
   const isError =
     (active === 'vol' && vol.isError && (vol.data?.length ?? 0) === 0) ||
     (active !== 'vol' && home.isError && !home.data);
+  const errorMessage = active === 'vol' ? vol.error?.message : home.error?.message;
 
   const visible = expanded ? items.slice(0, 10) : items.slice(0, 5);
   const canExpand = items.length > 5;
@@ -50,7 +51,7 @@ export default function TopMoversPanel() {
     <View style={styles.section}>
       <TabSwitcher tabs={TABS} active={active} onChange={(k) => { setActive(k); setExpanded(false); }} />
       {isError ? (
-        <SectionError onRetry={() => (active === 'vol' ? vol.refetch() : home.refetch())} />
+        <SectionError message={errorMessage} onRetry={() => (active === 'vol' ? vol.refetch() : home.refetch())} />
       ) : isLoading ? (
         <View>
           {[0, 1, 2, 3, 4].map((i) => (

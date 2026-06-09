@@ -5,9 +5,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMemo, useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,7 +52,7 @@ export default function StockDetailScreen() {
 
   if (!symbol) {
     return (
-      <SafeAreaView style={styles.center}>
+      <SafeAreaView style={styles.center} edges={['top', 'bottom']}>
         <Ionicons name="alert-circle-outline" size={48} color={colors.negative} />
         <Text style={styles.errorText}>Invalid stock symbol</Text>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
@@ -64,7 +64,7 @@ export default function StockDetailScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.center}>
+      <SafeAreaView style={styles.center} edges={['top', 'bottom']}>
         <ActivityIndicator size="large" color={colors.primary} accessibilityLabel={`Loading ${symbol}`} />
         <Text style={styles.loadingText}>Loading {symbol}...</Text>
       </SafeAreaView>
@@ -73,7 +73,7 @@ export default function StockDetailScreen() {
 
   if (isError || !detail) {
     return (
-      <SafeAreaView style={styles.center}>
+      <SafeAreaView style={styles.center} edges={['top', 'bottom']}>
         <Ionicons name="alert-circle-outline" size={48} color={colors.negative} />
         <Text style={styles.errorText}>
           {error instanceof Error ? error.message : 'Stock not found'}
@@ -129,7 +129,7 @@ export default function StockDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Nav bar */}
         <View style={styles.nav}>

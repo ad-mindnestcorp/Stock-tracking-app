@@ -2,10 +2,10 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { HOME } from '@/components/home/home-tokens';
@@ -321,7 +321,7 @@ export default function AIDetailScreen() {
 
   if (!meta || !parsedData) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.errorState}>
           <Text style={styles.errorText}>Unable to load section data.</Text>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -335,7 +335,7 @@ export default function AIDetailScreen() {
   const verdict = (parsedData as { verdict: string }).verdict ?? '';
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={10} style={styles.backArrow}>

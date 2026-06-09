@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { log, errorMessage, axiosStatus } from '../utils/logger';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const YahooFinanceClass = require('yahoo-finance2').default as new (opts?: Record<string, unknown>) => {
   historical: (
@@ -110,7 +111,7 @@ async function getVolumeFromYahoo(symbol: string): Promise<number | undefined> {
     if (volume != null) setCached(key, volume, TTL.VOLUME);
     return volume;
   } catch (err) {
-    console.warn(`[yahoo:volume] ${symbol} — failed to fetch:`, err);
+    log({ level: 'warn', tag: '[yahoo]', message: `getVolumeFromYahoo failed for ${symbol}`, context: { symbol, error: errorMessage(err) } });
     return undefined;
   }
 }
@@ -121,29 +122,39 @@ export async function getQuote(symbol: string): Promise<StockQuote> {
   const cached = getCached<StockQuote>(key);
   if (cached) return cached;
 
-  const res = await axios.get(`${BASE_URL}/quote`, {
-    params: { symbol, token: API_KEY },
-    timeout: 8000,
-  });
-  const d = res.data;
-  let volume: number | undefined = d.v != null && d.v > 0 ? d.v : undefined;
-  if (volume == null) {
-    volume = await getVolumeFromYahoo(symbol);
-  }
+  try {
+    const res = await axios.get(`${BASE_URL}/quote`, {
+      params: { symbol, token: API_KEY },
+      timeout: 8000,
+    });
+    const d = res.data;
+    let volume: number | undefined = d.v != null && d.v > 0 ? d.v : undefined;
+    if (volume == null) {
+      volume = await getVolumeFromYahoo(symbol);
+    }
 
-  const quote: StockQuote = {
-    symbol,
-    currentPrice: d.c,
-    change: d.d,
-    changePercent: d.dp,
-    high: d.h,
-    low: d.l,
-    open: d.o,
-    previousClose: d.pc,
-    volume,
-  };
-  setCached(key, quote, TTL.QUOTE);
-  return quote;
+    const quote: StockQuote = {
+      symbol,
+      currentPrice: d.c,
+      change: d.d,
+      changePercent: d.dp,
+      high: d.h,
+      low: d.l,
+      open: d.o,
+      previousClose: d.pc,
+      volume,
+    };
+    setCached(key, quote, TTL.QUOTE);
+    return quote;
+  } catch (err) {
+    log({
+      level: 'error',
+      tag: '[finnhub]',
+      message: `getQuote failed for ${symbol}`,
+      context: { symbol, status: axiosStatus(err), error: errorMessage(err) },
+    });
+    throw err;
+  }
 }
 
 /**
@@ -178,7 +189,7 @@ export async function getYahooQuote(
     setCached(key, quote, TTL.QUOTE);
     return quote;
   } catch (err) {
-    console.warn(`[yahoo:quote] ${yahooSymbol} — failed:`, err);
+    log({ level: 'warn', tag: '[yahoo]', message: `getYahooQuote failed for ${yahooSymbol}`, context: { symbol: yahooSymbol, error: errorMessage(err) } });
     return null;
   }
 }
@@ -210,7 +221,8 @@ export async function getDailyCandles(symbol: string, days = 365): Promise<Candl
     };
     setCached(key, candles, TTL.CANDLES_DAILY);
     return candles;
-  } catch {
+  } catch (err) {
+    log({ level: 'warn', tag: '[finnhub]', message: `getDailyCandles failed for ${symbol}`, context: { symbol, days, status: axiosStatus(err), error: errorMessage(err) } });
     return null;
   }
 }
@@ -242,7 +254,8 @@ export async function getIntradayCandles(symbol: string): Promise<CandleData | n
     };
     setCached(key, candles, TTL.CANDLES_INTRADAY);
     return candles;
-  } catch {
+  } catch (err) {
+    log({ level: 'warn', tag: '[finnhub]', message: `getIntradayCandles failed for ${symbol}`, context: { symbol, status: axiosStatus(err), error: errorMessage(err) } });
     return null;
   }
 }
@@ -271,7 +284,8 @@ export async function getCompanyProfile(symbol: string): Promise<CompanyProfile 
     };
     setCached(key, profile, TTL.PROFILE);
     return profile;
-  } catch {
+  } catch (err) {
+    log({ level: 'warn', tag: '[finnhub]', message: `getCompanyProfile failed for ${symbol}`, context: { symbol, status: axiosStatus(err), error: errorMessage(err) } });
     return null;
   }
 }
@@ -302,7 +316,8 @@ export async function getYahooDailyCloses(
     if (closes.length === 0) return null;
     setCached(key, closes, TTL.CANDLES_DAILY);
     return closes;
-  } catch {
+  } catch (err) {
+    log({ level: 'warn', tag: '[yahoo]', message: `getYahooDailyCloses failed for ${yahooSymbol}`, context: { symbol: yahooSymbol, days, error: errorMessage(err) } });
     return null;
   }
 }
@@ -332,7 +347,8 @@ export async function getDailyCandlesFromYahoo(symbol: string, days: number): Pr
     };
     setCached(key, candles, TTL.CANDLES_DAILY);
     return candles;
-  } catch {
+  } catch (err) {
+    log({ level: 'warn', tag: '[yahoo]', message: `getDailyCandlesFromYahoo failed for ${symbol}`, context: { symbol, days, error: errorMessage(err) } });
     return null;
   }
 }
@@ -364,7 +380,8 @@ async function getDailyDataFromYahoo(symbol: string, days = 365): Promise<Week52
       recentHighs: highs.slice(-30),
       recentLows:  lows.slice(-30),
     };
-  } catch {
+  } catch (err) {
+    log({ level: 'warn', tag: '[yahoo]', message: `getDailyDataFromYahoo failed for ${symbol}`, context: { symbol, days, error: errorMessage(err) } });
     return null;
   }
 }
@@ -423,7 +440,7 @@ export async function getBatchQuotes(
       if (outcome.status === 'fulfilled') {
         result.set(batch[idx], outcome.value);
       } else {
-        console.error(`Failed to fetch quote for ${batch[idx]}:`, outcome.reason);
+        log({ level: 'warn', tag: '[finnhub]', message: `getBatchQuotes: quote failed for ${batch[idx]}`, context: { symbol: batch[idx], error: errorMessage(outcome.reason) } });
       }
     });
     // Small pause between batches to stay within 60 req/min on Finnhub free tier.
@@ -447,22 +464,32 @@ export async function searchSymbols(query: string): Promise<SymbolSearchResult[]
   const cached = getCached<SymbolSearchResult[]>(key);
   if (cached) return cached;
 
-  const res = await axios.get(`${BASE_URL}/search`, {
-    params: { q: query, token: API_KEY },
-    timeout: 8000,
-  });
+  try {
+    const res = await axios.get(`${BASE_URL}/search`, {
+      params: { q: query, token: API_KEY },
+      timeout: 8000,
+    });
 
-  const results: SymbolSearchResult[] = (res.data.result ?? [])
-    .filter((r: { type: string }) => r.type === 'Common Stock' || r.type === 'EQS')
-    .slice(0, 10)
-    .map((r: { symbol: string; description: string; type: string }) => ({
-      symbol: r.symbol,
-      description: r.description,
-      type: r.type,
-    }));
+    const results: SymbolSearchResult[] = (res.data.result ?? [])
+      .filter((r: { type: string }) => r.type === 'Common Stock' || r.type === 'EQS')
+      .slice(0, 10)
+      .map((r: { symbol: string; description: string; type: string }) => ({
+        symbol: r.symbol,
+        description: r.description,
+        type: r.type,
+      }));
 
-  setCached(key, results, 30_000);
-  return results;
+    setCached(key, results, 30_000);
+    return results;
+  } catch (err) {
+    log({
+      level: 'error',
+      tag: '[finnhub]',
+      message: `searchSymbols failed for query "${query}"`,
+      context: { query, status: axiosStatus(err), error: errorMessage(err) },
+    });
+    throw err;
+  }
 }
 
 export interface BasicFinancials {
@@ -579,7 +606,7 @@ export async function getBasicFinancials(symbol: string): Promise<BasicFinancial
     setCached(key, result, TTL.CANDLES_DAILY);
     return result;
   } catch (err) {
-    console.warn(`[finnhub:metrics] ${symbol} — ${err instanceof Error ? err.message : err}`);
+    log({ level: 'warn', tag: '[finnhub]', message: `getBasicFinancials failed for ${symbol}`, context: { symbol, status: axiosStatus(err), error: errorMessage(err) } });
     return null;
   }
 }

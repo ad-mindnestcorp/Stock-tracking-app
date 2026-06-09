@@ -1,4 +1,5 @@
-import { SafeAreaView, ScrollView, Text, View, StyleSheet, RefreshControl } from 'react-native';
+import { ScrollView, Text, View, StyleSheet, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import ImportantEarnings from '@/components/home/important-earnings';
@@ -19,7 +20,7 @@ export default function EarningsScreen() {
   }, [queryClient]);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Earnings</Text>
       </View>

@@ -1,4 +1,5 @@
 import { POPULAR_SYMBOLS, getCompanyProfile } from "./finnhub.service";
+import { log, errorMessage } from "../utils/logger";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const YahooFinanceClass = require("yahoo-finance2").default as new (
@@ -95,7 +96,12 @@ export async function getUnusualVolumeStocks(): Promise<UnusualVolumeStock[]> {
     cache = { data: withLogos, expiresAt: Date.now() + TTL_MS };
     return withLogos;
   } catch (err) {
-    console.error("[unusual-volume] failed to fetch:", err);
+    log({
+      level: 'error',
+      tag: '[yahoo]',
+      message: 'getUnusualVolumeStocks failed',
+      context: { error: errorMessage(err) },
+    });
     return cache?.data ?? [];
   }
 }

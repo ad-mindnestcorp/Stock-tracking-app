@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { log, errorMessage } from '../utils/logger';
 import {
   getQuote,
   getYahooQuote,
@@ -56,7 +57,8 @@ router.get('/quote/:symbol', async (req: Request, res: Response) => {
       getCompanyProfile(symbol),
     ]);
     return res.json({ ...quote, profile });
-  } catch {
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: `quote failed for ${symbol}`, context: { symbol, error: errorMessage(err) } });
     return res.status(500).json({ error: `Failed to fetch quote for ${symbol}` });
   }
 });
@@ -105,7 +107,7 @@ router.get('/detail/:symbol', async (req: Request, res: Response) => {
       momentumScore,
     });
   } catch (err) {
-    console.error(`Detail fetch failed for ${symbol}:`, err);
+    log({ level: 'error', tag: '[market]', message: `detail failed for ${symbol}`, context: { symbol, error: errorMessage(err) } });
     return res.status(500).json({ error: `Failed to fetch detail for ${symbol}` });
   }
 });
@@ -130,7 +132,8 @@ router.get('/candles/:symbol', async (req: Request, res: Response) => {
 
     if (!candles) return res.status(404).json({ error: 'No candle data available' });
     return res.json(candles);
-  } catch {
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: `candles failed for ${symbol}`, context: { symbol, range, error: errorMessage(err) } });
     return res.status(500).json({ error: `Failed to fetch candles for ${symbol}` });
   }
 });
@@ -166,7 +169,8 @@ router.get('/indexes', async (_req: Request, res: Response) => {
       })
     );
     return res.json(results);
-  } catch {
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: 'indexes failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch indexes' });
   }
 });
@@ -186,7 +190,8 @@ router.get('/sectors', async (_req: Request, res: Response) => {
       };
     });
     return res.json(results);
-  } catch {
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: 'sectors failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch sectors' });
   }
 });
@@ -197,7 +202,7 @@ router.get('/unusual-volume', async (_req: Request, res: Response) => {
     const results = await getUnusualVolumeStocks();
     return res.json(results);
   } catch (err) {
-    console.error('Unusual volume fetch failed:', err);
+    log({ level: 'error', tag: '[market]', message: 'unusual-volume failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch unusual volume' });
   }
 });
@@ -238,7 +243,8 @@ router.get('/home', async (req: Request, res: Response) => {
         .sort((a, b) => Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0))
         .slice(0, 10),
     });
-  } catch {
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: 'home failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch home market data' });
   }
 });

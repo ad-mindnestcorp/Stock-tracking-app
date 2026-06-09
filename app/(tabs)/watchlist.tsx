@@ -21,13 +21,13 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
     Modal,
     RefreshControl,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -78,7 +78,7 @@ export default function WatchlistScreen() {
     const isLoading = watchlistsLoading || (!!selectedId && stocksLoading);
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView style={styles.safe} edges={['top']}>
             {/* Dismiss overlay */}
             {dropdownOpen && (
                 <TouchableWithoutFeedback onPress={() => setDropdownOpen(false)}>

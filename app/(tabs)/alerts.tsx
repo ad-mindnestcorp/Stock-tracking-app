@@ -5,8 +5,8 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAlerts, useMarkAlertRead, useMarkAllAlertsRead } from '@/hooks/use-alerts';
@@ -26,7 +26,7 @@ export default function AlertsScreen() {
   const unreadCount = alerts.filter((a) => !a.is_read).length;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View>

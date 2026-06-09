@@ -28,7 +28,7 @@ const SPARKLINE_HEIGHT = 22;
 const AUTO_SLIDE_MS = 3000;
 
 export default function IndexCardsRow() {
-  const { data, isLoading, isError, refetch } = useIndexes();
+  const { data, isLoading, isError, error, refetch } = useIndexes();
   const { width: screenWidth } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const currentIndexRef = useRef(0);
@@ -92,7 +92,7 @@ export default function IndexCardsRow() {
   if (isError) {
     return (
       <View style={styles.skeletonRow}>
-        <SectionError onRetry={() => refetch()} style={{ flex: 1 }} />
+        <SectionError message={error?.message} onRetry={() => refetch()} style={{ flex: 1 }} />
       </View>
     );
   }

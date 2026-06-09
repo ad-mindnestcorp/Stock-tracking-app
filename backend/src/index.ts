@@ -2,9 +2,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import cors from "cors";
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
+import { log, errorMessage } from "./utils/logger";
 
 import aiRouter from "./routes/ai";
 import alertsRouter from "./routes/alerts";
@@ -29,6 +30,24 @@ const PORT = process.env.PORT ?? 3000;
 app.use(cors());
 app.use(express.json());
 
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info";
+    log({
+      level,
+      tag: "[http]",
+      message: `${req.method} ${req.path} ${res.statusCode} ${duration}ms`,
+      context: {
+        userId: req.headers["x-user-id"] as string | undefined,
+        query: Object.keys(req.query).length > 0 ? req.query : undefined,
+      },
+    });
+  });
+  next();
+});
+
 app.use("/api/stocks", stocksRouter);
 app.use("/api/watchlists", watchlistsRouter);
 app.use("/api/alerts", alertsRouter);
@@ -39,6 +58,21 @@ app.use("/api/ai", aiRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  log({
+    level: "error",
+    tag: "[unhandled]",
+    message: errorMessage(err),
+    context: { stack: err instanceof Error ? err.stack : undefined },
+  });
+  res.status(500).json({ error: "Internal server error" });
 });
 
 const httpServer = createServer(app);

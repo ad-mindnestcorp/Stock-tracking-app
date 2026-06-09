@@ -16,9 +16,9 @@ const SOURCE_TINTS = [
 ];
 
 export default function NewsList({ limit = 10 }: { limit?: number }) {
-  const { data, isLoading, isError, refetch } = useMarketNews();
+  const { data, isLoading, isError, error, refetch } = useMarketNews();
 
-  if (isError) return <SectionError onRetry={() => refetch()} />;
+  if (isError) return <SectionError message={error?.message} onRetry={() => refetch()} />;
 
   if (isLoading || !data) {
     return (

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from './supabase';
+import { Sentry } from './sentry';
 import type {
   AIStockSummary,
   AIResearchFoundation,
@@ -16,6 +17,40 @@ import type {
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const REQUEST_TIMEOUT_MS = 15_000;
+
+function classifyError(err: unknown, status?: number): Error {
+  if (err instanceof Error) {
+    if (err.name === 'AbortError') {
+      return new Error('Request timed out. Please check your connection and try again.');
+    }
+    if (err.message === 'Network request failed' || err.message.includes('fetch')) {
+      return new Error('No internet connection. Please check your network and try again.');
+    }
+  }
+  if (status === 401 || status === 403) {
+    return new Error('Your session has expired. Please sign in again.');
+  }
+  if (status === 429) {
+    return new Error('Too many requests. Please wait a moment and try again.');
+  }
+  if (status != null && status >= 500) {
+    return new Error('Server error. Please try again in a moment.');
+  }
+  if (err instanceof Error) return err;
+  return new Error('Something went wrong. Please try again.');
+}
+
+function logApiError(path: string, err: unknown): void {
+  if (__DEV__) {
+    console.warn(`[api] ${path}:`, err instanceof Error ? err.message : err);
+  } else {
+    try {
+      Sentry.captureException(err, { extra: { path } });
+    } catch {
+      // Sentry not configured — ignore
+    }
+  }
+}
 
 async function request<T>(
   path: string,
@@ -44,16 +79,21 @@ async function request<T>(
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(error.error ?? `HTTP ${res.status}`);
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      const message = body.error ?? `HTTP ${res.status}`;
+      const classified = classifyError(new Error(message), res.status);
+      logApiError(path, classified);
+      throw classified;
     }
 
     return res.json() as Promise<T>;
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error('Request timed out. Please check your connection and try again.');
+    if (err instanceof Error && (err.message.includes('timed out') || err.message.includes('internet') || err.message.includes('session') || err.message.includes('requests') || err.message.includes('Server error'))) {
+      throw err;
     }
-    throw err;
+    const classified = classifyError(err);
+    logApiError(path, classified);
+    throw classified;
   } finally {
     clearTimeout(timeoutId);
   }

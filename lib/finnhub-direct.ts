@@ -92,7 +92,12 @@ export interface EconomicCalendarItem {
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export async function fetchMarketNews(category = 'general'): Promise<MarketNewsItem[]> {
-  return finnhub<MarketNewsItem[]>('/news', { category });
+  try {
+    return await finnhub<MarketNewsItem[]>('/news', { category });
+  } catch (err) {
+    console.warn('[finnhub-direct] fetchMarketNews failed:', err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 /** YYYY-MM-DD strings, inclusive */
@@ -100,11 +105,16 @@ export async function fetchEarningsCalendar(
   from: string,
   to: string
 ): Promise<EarningsCalendarItem[]> {
-  const data = await finnhub<{ earningsCalendar: EarningsCalendarItem[] }>(
-    '/calendar/earnings',
-    { from, to }
-  );
-  return data?.earningsCalendar ?? [];
+  try {
+    const data = await finnhub<{ earningsCalendar: EarningsCalendarItem[] }>(
+      '/calendar/earnings',
+      { from, to }
+    );
+    return data?.earningsCalendar ?? [];
+  } catch (err) {
+    console.warn('[finnhub-direct] fetchEarningsCalendar failed:', err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 // Module-level profile cache with 1-hour TTL to minimise API calls
@@ -130,8 +140,13 @@ export async function fetchCompanyProfile(
 }
 
 export async function fetchEconomicCalendar(): Promise<EconomicCalendarItem[]> {
-  const data = await finnhub<{ economicCalendar: EconomicCalendarItem[] }>(
-    '/calendar/economic'
-  );
-  return data?.economicCalendar ?? [];
+  try {
+    const data = await finnhub<{ economicCalendar: EconomicCalendarItem[] }>(
+      '/calendar/economic'
+    );
+    return data?.economicCalendar ?? [];
+  } catch (err) {
+    console.warn('[finnhub-direct] fetchEconomicCalendar failed:', err instanceof Error ? err.message : err);
+    return [];
+  }
 }

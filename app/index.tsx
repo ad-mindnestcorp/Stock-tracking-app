@@ -6,6 +6,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/auth';
@@ -36,7 +37,7 @@ export default function SplashScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Logo */}
       <View style={styles.logoRow}>
         <Ionicons name="bar-chart" size={22} color={Colors.textPrimary} />
@@ -80,7 +81,7 @@ export default function SplashScreen() {
           <Text style={styles.ctaText}>Let's Get Started</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -114,7 +115,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-    paddingTop: 64,
   },
 
   logoRow: {

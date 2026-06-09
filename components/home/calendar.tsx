@@ -103,10 +103,12 @@ export default function Calendar() {
 
   const isLoading = earnings.isLoading || economic.isLoading;
   const isError = earnings.isError && economic.isError;
+  const calendarErrorMessage = earnings.error?.message ?? economic.error?.message;
 
   if (isError) {
     return (
       <SectionError
+        message={calendarErrorMessage}
         onRetry={() => {
           earnings.refetch();
           economic.refetch();

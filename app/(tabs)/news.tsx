@@ -10,13 +10,13 @@ import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ─── Filter tabs ──────────────────────────────────────────────────────────────
 
@@ -172,7 +172,7 @@ export default function NewsScreen() {
   const invalidateNews = useInvalidateNews();
   const prevIdsRef = useRef<Set<string>>(new Set());
 
-  const { data, isLoading, isError, refetch } = useAggregatedNews(filter);
+  const { data, isLoading, isError, error, refetch } = useAggregatedNews(filter);
 
   // Track new articles silently after a background refresh
   const currentIds = new Set([
@@ -210,7 +210,7 @@ export default function NewsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>News</Text>
       </View>
@@ -237,7 +237,7 @@ export default function NewsScreen() {
       >
         {isError && (
           <SectionError
-            message="Couldn't load news"
+            message={error?.message ?? "Couldn't load news"}
             onRetry={() => refetch()}
           />
         )}
