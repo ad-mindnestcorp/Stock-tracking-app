@@ -1059,7 +1059,7 @@ function WatchlistRow({
                         )}
                     </View>
                     <View style={styles.rowInfo}>
-                        <Text style={styles.rowSymbol}>{stock.symbol}</Text>
+                        <Text style={styles.rowSymbol} numberOfLines={1}>{stock.symbol}</Text>
                         <Text style={styles.rowName} numberOfLines={1}>
                             {stock.company_name ?? stock.symbol}
                         </Text>
@@ -1599,7 +1599,7 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
             justifyContent: "center",
             marginHorizontal: 8,
         },
-        cardRight: { alignItems: "flex-end" },
+        cardRight: { alignItems: "flex-end", flexShrink: 0 },
         starPriceRow: {
             flexDirection: "row",
             alignItems: "flex-start",

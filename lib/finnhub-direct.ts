@@ -17,14 +17,16 @@ async function finnhub<T>(path: string, params: Record<string, string> = {}): Pr
     );
   }
 
-  const url = new URL(`${BASE_URL}${path}`);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  url.searchParams.set('token', API_KEY);
+  const allParams = { ...params, token: API_KEY };
+  const queryString = Object.entries(allParams)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  const url = `${BASE_URL}${path}?${queryString}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(url.toString(), { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) {
       throw new Error(`Finnhub ${path} failed: HTTP ${res.status}`);
     }
