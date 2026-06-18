@@ -44,7 +44,7 @@ export default function SignupScreen() {
 
   const onSignup = async (data: SignupFormValues) => {
     setLoading(true);
-    const redirectUrl = Linking.createURL('auth/callback');
+    const redirectUrl = 'https://confirmationvesto.netlify.app/auth/callback';
 
     const { data: authData, error } = await supabase.auth.signUp({
       email: data.email.trim().toLowerCase(),
