@@ -4,10 +4,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { useTheme } from '@/context/theme-context';
-import { Radius } from '@/constants/theme';
+import { Radius, type AppColors } from '@/constants/theme';
 
 export default function VerifyEmailScreen() {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const colors = theme?.colors;
+  
+  if (!colors) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a0a' }}>
+        <Text style={{ color: '#fff' }}>Loading...</Text>
+      </View>
+    );
+  }
+  
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isWeb = Platform.OS === 'web';
 
@@ -59,7 +69,7 @@ export default function VerifyEmailScreen() {
   );
 }
 
-function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+function createStyles(colors: AppColors) {
   return StyleSheet.create({
     safe: {
       flex: 1,
