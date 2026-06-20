@@ -1,17 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { getQuote, getWeek52Data, searchSymbols, getCompanyProfile } from '../services/finnhub.service';
-import { calculateRSI } from '../services/rsi.service';
-import { calculateDMA } from '../services/dma.service';
-import { calculateSupportResistance } from '../services/support-resistance.service';
-import { calculateMomentum } from '../services/momentum.service';
+import { getQuote, searchSymbols } from '../services/finnhub.service';
+import { enrichStocks } from '../services/enrich-stocks.service';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-// All routes use req.headers['x-user-id'] or fall back to DEV_USER_ID
-function getUserId(req: Request): string {
-  return (req.headers['x-user-id'] as string) || process.env.DEV_USER_ID || 'dev-user';
-}
+router.use(requireAuth);
 
 /** GET /api/stocks/search?q= — search for stock symbols via Finnhub */
 router.get('/search', async (req: Request, res: Response) => {
@@ -30,7 +25,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
 /** GET /api/stocks — list user's watchlist with live quotes */
 router.get('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
 
   const { data, error } = await supabase
     .from('user_stocks')
@@ -40,63 +35,14 @@ router.get('/', async (req: Request, res: Response) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Enrich with live quotes and RSI
-  const enriched = await Promise.all(
-    (data ?? []).map(async (stock) => {
-      try {
-        const [quote, week52, profile] = await Promise.all([
-          getQuote(stock.symbol),
-          getWeek52Data(stock.symbol),
-          getCompanyProfile(stock.symbol),
-        ]);
-        const rsiResult = week52 ? calculateRSI(week52.closes) : null;
-        const dmaResult = week52 && quote ? calculateDMA(week52.closes, quote.currentPrice) : null;
-        const srResult =
-          week52?.recentLows && week52?.recentHighs && quote
-            ? calculateSupportResistance(week52.recentLows, week52.recentHighs, quote.currentPrice)
-            : null;
-        const currentVolume = quote?.volume;
-        const avgVolume = week52?.avgVolume;
-        console.log(`[volume] ${stock.symbol} — currentVolume=${currentVolume} avgVolume=${avgVolume} quoteRaw=${JSON.stringify(quote)}`);
-        const relativeVolume =
-          currentVolume != null && avgVolume != null && avgVolume > 0
-            ? currentVolume / avgVolume
-            : null;
-        console.log(`[volume] ${stock.symbol} — relativeVolume=${relativeVolume}`);
-        const momentumScore = week52
-          ? calculateMomentum(rsiResult?.rsi ?? null, week52.closes, relativeVolume)
-          : null;
-        return {
-          ...stock,
-          quote: quote ? { ...quote, profile: profile ?? null } : null,
-          rsi: rsiResult?.rsi ?? null,
-          isOverbought: rsiResult?.isOverbought ?? false,
-          isOversold: rsiResult?.isOversold ?? false,
-          rsiTrend: rsiResult?.rsiTrend ?? 'flat',
-          week52High: week52?.high52w ?? null,
-          week52Low: week52?.low52w ?? null,
-          relativeVolume,
-          ma50: dmaResult?.ma50 ?? null,
-          ma200: dmaResult?.ma200 ?? null,
-          ma50Trend: dmaResult?.ma50Trend ?? null,
-          ma200Trend: dmaResult?.ma200Trend ?? null,
-          supportLevel: srResult?.support ?? null,
-          resistanceLevel: srResult?.resistance ?? null,
-          srSignal: srResult?.signal ?? null,
-          momentumScore,
-        };
-      } catch {
-        return { ...stock, quote: null, rsi: null, isOverbought: false, isOversold: false, week52High: null, week52Low: null, relativeVolume: null };
-      }
-    })
-  );
+  const enriched = await enrichStocks(data ?? []);
 
   return res.json(enriched);
 });
 
 /** POST /api/stocks — add a stock to watchlist */
 router.post('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { symbol, company_name } = req.body as { symbol?: string; company_name?: string };
 
   if (!symbol || typeof symbol !== 'string') {
@@ -105,7 +51,6 @@ router.post('/', async (req: Request, res: Response) => {
 
   const cleanSymbol = symbol.trim().toUpperCase();
 
-  // Validate symbol exists on Finnhub
   try {
     const quote = await getQuote(cleanSymbol);
     if (!quote.currentPrice) {
@@ -133,7 +78,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 /** DELETE /api/stocks/:symbol — remove from watchlist */
 router.delete('/:symbol', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const symbol = req.params.symbol.toUpperCase();
 
   const { error } = await supabase

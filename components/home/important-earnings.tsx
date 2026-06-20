@@ -106,8 +106,8 @@ function EarningsRow({ item }: { item: ImportantEarningsEntry }) {
 
       {/* Market Cap */}
       <View style={styles.rowCell}>
-        <Text style={styles.rowValue}>{fmtMarketCapFull(item.marketCapitalization)}</Text>
-        <Text style={styles.rowSub}>{capSizeLabel(item.marketCapitalization)}</Text>
+        <Text style={styles.rowValue}>{fmtMarketCapFull(item.marketCap)}</Text>
+        <Text style={styles.rowSub}>{capSizeLabel(item.marketCap)}</Text>
       </View>
 
       {/* EPS Estimate */}

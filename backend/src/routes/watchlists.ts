@@ -2,12 +2,11 @@ import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { searchSymbols, getQuote } from '../services/finnhub.service';
 import { enrichStocks } from '../services/enrich-stocks.service';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-function getUserId(req: Request): string {
-  return (req.headers['x-user-id'] as string) || process.env.DEV_USER_ID || 'dev-user';
-}
+router.use(requireAuth);
 
 /**
  * Ensures the user has at least one watchlist. If none exist, creates "My Watchlist"
@@ -53,7 +52,7 @@ async function ensureDefaultWatchlist(userId: string) {
 
 /** GET /api/watchlists — list user's watchlists (auto-creates default if none) */
 router.get('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   try {
     const watchlists = await ensureDefaultWatchlist(userId);
     return res.json(watchlists);
@@ -64,7 +63,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /** POST /api/watchlists — create a new watchlist */
 router.post('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { name } = req.body as { name?: string };
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'name is required' });
@@ -88,7 +87,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 /** PATCH /api/watchlists/:id — rename a watchlist */
 router.patch('/:id', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { id } = req.params;
   const { name } = req.body as { name?: string };
   if (!name || !name.trim()) {
@@ -116,7 +115,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 
 /** DELETE /api/watchlists/:id — delete a watchlist */
 router.delete('/:id', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { id } = req.params;
 
   // Prevent deleting the last watchlist
@@ -142,7 +141,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
 /** GET /api/watchlists/:id/stocks — list stocks in a watchlist with live data */
 router.get('/:id/stocks', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { id } = req.params;
 
   const { data, error } = await supabase
@@ -160,7 +159,7 @@ router.get('/:id/stocks', async (req: Request, res: Response) => {
 
 /** POST /api/watchlists/:id/stocks — add a stock to a watchlist */
 router.post('/:id/stocks', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { id } = req.params;
   const { symbol, company_name } = req.body as { symbol?: string; company_name?: string };
 
@@ -212,7 +211,7 @@ router.post('/:id/stocks', async (req: Request, res: Response) => {
 
 /** DELETE /api/watchlists/:id/stocks/:symbol — remove a stock from a watchlist */
 router.delete('/:id/stocks/:symbol', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { id, symbol } = req.params;
   const cleanSymbol = symbol.toUpperCase();
 

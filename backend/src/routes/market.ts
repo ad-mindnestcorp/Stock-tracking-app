@@ -2,45 +2,33 @@ import { Router, Request, Response } from 'express';
 import { log, errorMessage } from '../utils/logger';
 import {
   getQuote,
-  getYahooQuote,
-  getBatchQuotes,
+  getCompanyProfile,
+  getWeek52Data,
   getDailyCandles,
   getDailyCandlesFromYahoo,
   getIntradayCandles,
-  getCompanyProfile,
-  getWeek52Data,
-  getYahooDailyCloses,
-  POPULAR_SYMBOLS,
 } from '../services/finnhub.service';
 import { calculateRSI } from '../services/rsi.service';
 import { calculateDMA } from '../services/dma.service';
 import { calculateSupportResistance } from '../services/support-resistance.service';
 import { calculateMomentum } from '../services/momentum.service';
-import { getUnusualVolumeStocks } from '../services/polygon.service';
-
-// ─── Index ticker cards (Home screen Feature 1) ──────────────────────────────
-// SPY is used as a tradable proxy for the S&P 500 since Finnhub free tier
-// does not return quotes for ^GSPC.
-const INDEX_DEFS: { symbol: string; label: string; yahooSymbol: string }[] = [
-  { symbol: 'SPY', label: 'S&P 500', yahooSymbol: 'SPY' },
-  { symbol: 'BINANCE:BTCUSDT', label: 'BTC/USD', yahooSymbol: 'BTC-USD' },
-  { symbol: '^VIX', label: 'VIX', yahooSymbol: '^VIX' },
-  { symbol: 'GLD', label: 'Gold', yahooSymbol: 'GLD' },
-  { symbol: 'SLV', label: 'Silver', yahooSymbol: 'SLV' },
-];
-
-// ─── Sector ETFs for the Heatmap (Feature 2) ─────────────────────────────────
-const SECTOR_ETFS: { sector: string; etf: string }[] = [
-  { sector: 'Technology', etf: 'XLK' },
-  { sector: 'Financial', etf: 'XLF' },
-  { sector: 'Healthcare', etf: 'XLV' },
-  { sector: 'Energy', etf: 'XLE' },
-  { sector: 'Industrials', etf: 'XLI' },
-  { sector: 'Consumer Cyclical', etf: 'XLY' },
-  { sector: 'Utilities', etf: 'XLU' },
-  { sector: 'Real Estate', etf: 'XLRE' },
-  { sector: 'Materials', etf: 'XLB' },
-];
+import {
+  INDEX_DEFS,
+  SECTOR_ETFS,
+  getIndexesCache,
+  getSectorsCache,
+  getHomeCache,
+  getUnusualVolumeCache,
+  refreshIndexes,
+  refreshSectors,
+  refreshHome,
+  refreshUnusualVolume,
+} from '../services/market-cache.service';
+import {
+  getMarketNews,
+  getEarningsCalendar,
+  getEconomicCalendar,
+} from '../services/finnhub.service';
 
 const router = Router();
 
@@ -138,37 +126,15 @@ router.get('/candles/:symbol', async (req: Request, res: Response) => {
   }
 });
 
-/** GET /api/market/indexes — index cards (S&P 500 / BTC / VIX / GLD / SLV) with sparklines */
+/** GET /api/market/indexes — index cards (S&P 500 / BTC / VIX / GLD / SLV) with sparklines
+ *  Served from the pre-warmed background cache; falls back to a live fetch if the cache
+ *  has not been populated yet (e.g. very first request before startup completes). */
 router.get('/indexes', async (_req: Request, res: Response) => {
   try {
-    const results = await Promise.all(
-      INDEX_DEFS.map(async ({ symbol, label, yahooSymbol }) => {
-        let quote = await getQuote(symbol).catch(() => null);
-        if (!quote || !quote.currentPrice) {
-          quote = await getYahooQuote(yahooSymbol, symbol).catch(() => null);
-        }
-
-        // Try Finnhub daily candles first (works for some symbols/keys),
-        // fall back to Yahoo Finance for the trailing 30 daily closes.
-        let sparkline: number[] = [];
-        const candles = await getDailyCandles(symbol, 30).catch(() => null);
-        if (candles && candles.close.length > 0) {
-          sparkline = candles.close;
-        } else {
-          const closes = await getYahooDailyCloses(yahooSymbol, 30).catch(() => null);
-          if (closes) sparkline = closes;
-        }
-
-        return {
-          symbol,
-          label,
-          currentPrice: quote?.currentPrice ?? null,
-          changePercent: quote?.changePercent ?? null,
-          sparkline,
-        };
-      })
-    );
-    return res.json(results);
+    const cached = getIndexesCache();
+    if (cached) return res.json(cached);
+    await refreshIndexes();
+    return res.json(getIndexesCache() ?? []);
   } catch (err) {
     log({ level: 'error', tag: '[market]', message: 'indexes failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch indexes' });
@@ -178,18 +144,10 @@ router.get('/indexes', async (_req: Request, res: Response) => {
 /** GET /api/market/sectors — 9 sector ETFs with daily % change for the heatmap */
 router.get('/sectors', async (_req: Request, res: Response) => {
   try {
-    const symbols = SECTOR_ETFS.map((s) => s.etf);
-    const quotesMap = await getBatchQuotes(symbols);
-    const results = SECTOR_ETFS.map(({ sector, etf }) => {
-      const q = quotesMap.get(etf);
-      return {
-        sector,
-        etf,
-        changePercent: q?.changePercent ?? null,
-        currentPrice: q?.currentPrice ?? null,
-      };
-    });
-    return res.json(results);
+    const cached = getSectorsCache();
+    if (cached) return res.json(cached);
+    await refreshSectors();
+    return res.json(getSectorsCache() ?? []);
   } catch (err) {
     log({ level: 'error', tag: '[market]', message: 'sectors failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch sectors' });
@@ -199,8 +157,10 @@ router.get('/sectors', async (_req: Request, res: Response) => {
 /** GET /api/market/unusual-volume — top 10 stocks by volume / avgVolume ratio */
 router.get('/unusual-volume', async (_req: Request, res: Response) => {
   try {
-    const results = await getUnusualVolumeStocks();
-    return res.json(results);
+    const cached = getUnusualVolumeCache();
+    if (cached) return res.json(cached);
+    await refreshUnusualVolume();
+    return res.json(getUnusualVolumeCache() ?? []);
   } catch (err) {
     log({ level: 'error', tag: '[market]', message: 'unusual-volume failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch unusual volume' });
@@ -208,44 +168,54 @@ router.get('/unusual-volume', async (_req: Request, res: Response) => {
 });
 
 /** GET /api/market/home — trending, top gainers, top losers from popular symbols */
-router.get('/home', async (req: Request, res: Response) => {
+router.get('/home', async (_req: Request, res: Response) => {
   try {
-    const [quotesMap, profileResults] = await Promise.all([
-      getBatchQuotes(POPULAR_SYMBOLS),
-      Promise.allSettled(
-        POPULAR_SYMBOLS.map((s) => getCompanyProfile(s).then((p) => ({ symbol: s, profile: p })))
-      ),
-    ]);
-    const quotes = Array.from(quotesMap.values()).filter(
-      (q) => q.currentPrice > 0
-    );
-    const profileMap = new Map<string, Awaited<ReturnType<typeof getCompanyProfile>>>();
-    for (const r of profileResults) {
-      if (r.status === 'fulfilled' && r.value.profile) {
-        profileMap.set(r.value.symbol, r.value.profile);
-      }
-    }
-
-    const withProfiles = quotes.map((q) => ({
-      ...q,
-      profile: profileMap.get(q.symbol) ?? null,
-    }));
-
-    const byChangePercent = [...withProfiles].sort(
-      (a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0)
-    );
-
-    return res.json({
-      trending: withProfiles.slice(0, 10),
-      topGainers: byChangePercent.slice(0, 10),
-      topLosers: byChangePercent.slice(-10).reverse(),
-      mostActive: [...withProfiles]
-        .sort((a, b) => Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0))
-        .slice(0, 10),
-    });
+    const cached = getHomeCache();
+    if (cached) return res.json(cached);
+    await refreshHome();
+    return res.json(getHomeCache() ?? { trending: [], topGainers: [], topLosers: [], mostActive: [] });
   } catch (err) {
     log({ level: 'error', tag: '[market]', message: 'home failed', context: { error: errorMessage(err) } });
     return res.status(500).json({ error: 'Failed to fetch home market data' });
+  }
+});
+
+/** GET /api/market/news?category= — general market news (proxies Finnhub, cached 5 min) */
+router.get('/news', async (req: Request, res: Response) => {
+  const category = (req.query.category as string | undefined) ?? 'general';
+  try {
+    const items = await getMarketNews(category);
+    return res.json(items);
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: 'news failed', context: { error: errorMessage(err) } });
+    return res.status(500).json({ error: 'Failed to fetch market news' });
+  }
+});
+
+/** GET /api/market/earnings-calendar?from=YYYY-MM-DD&to=YYYY-MM-DD — earnings calendar (cached 1 h) */
+router.get('/earnings-calendar', async (req: Request, res: Response) => {
+  const from = req.query.from as string | undefined;
+  const to = req.query.to as string | undefined;
+  if (!from || !to) {
+    return res.status(400).json({ error: '"from" and "to" query params are required (YYYY-MM-DD)' });
+  }
+  try {
+    const items = await getEarningsCalendar(from, to);
+    return res.json(items);
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: 'earnings-calendar failed', context: { error: errorMessage(err) } });
+    return res.status(500).json({ error: 'Failed to fetch earnings calendar' });
+  }
+});
+
+/** GET /api/market/economic-calendar — economic events calendar (cached 1 h) */
+router.get('/economic-calendar', async (_req: Request, res: Response) => {
+  try {
+    const items = await getEconomicCalendar();
+    return res.json(items);
+  } catch (err) {
+    log({ level: 'error', tag: '[market]', message: 'economic-calendar failed', context: { error: errorMessage(err) } });
+    return res.status(500).json({ error: 'Failed to fetch economic calendar' });
   }
 });
 

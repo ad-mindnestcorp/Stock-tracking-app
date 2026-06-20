@@ -1,15 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-function getUserId(req: Request): string {
-  return (req.headers['x-user-id'] as string) || process.env.DEV_USER_ID || 'dev-user';
-}
+router.use(requireAuth);
 
 /** GET /api/alerts — get alert history for user */
 router.get('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const limit = parseInt((req.query.limit as string) || '50', 10);
   const unreadOnly = req.query.unread === 'true';
 
@@ -32,7 +31,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /** PATCH /api/alerts/:id/read — mark a single alert as read */
 router.patch('/:id/read', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   const { id } = req.params;
 
   const { error } = await supabase
@@ -47,7 +46,7 @@ router.patch('/:id/read', async (req: Request, res: Response) => {
 
 /** PATCH /api/alerts/read-all — mark all alerts as read */
 router.patch('/read-all', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
 
   const { error } = await supabase
     .from('alerts_log')

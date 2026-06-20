@@ -1,6 +1,10 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import type { ResponseInputItem } from 'openai/resources/responses/responses';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PQueue = require('p-queue').default as new (opts: { concurrency: number }) => {
+  add<T>(fn: () => Promise<T>): Promise<T>;
+};
 import { getQuote, getCompanyProfile, getWeek52Data, getBasicFinancials } from './finnhub.service';
 import { calculateRSI } from './rsi.service';
 import { calculateDMA } from './dma.service';
@@ -171,6 +175,10 @@ function getOpenAI(): OpenAI {
   return openaiClient;
 }
 
+/** Global concurrency cap for all OpenAI API calls. Prevents unbounded parallel fan-out
+ *  across sections/tiers; limits simultaneous in-flight requests to 4 at any time. */
+const openAIQueue = new PQueue({ concurrency: 4 });
+
 // ─── GPT call wrapper ─────────────────────────────────────────────────────────
 
 async function callGPT(opts: {
@@ -194,7 +202,7 @@ async function callGPT(opts: {
 
   if (useWebSearch) {
     model = AI_CONFIG.webSearchModel;
-    const response = await client.responses.create({
+    const response = await openAIQueue.add(() => client.responses.create({
       model,
       tools: [{ type: 'web_search_preview' }],
       max_output_tokens: AI_CONFIG.maxOutputTokens,
@@ -202,14 +210,14 @@ async function callGPT(opts: {
         { role: 'system', content: resolvedSystemPrompt },
         { role: 'user', content: prompt },
       ] as ResponseInputItem[],
-    });
+    }));
     text = response.output_text ?? '{}';
     promptTokens = response.usage?.input_tokens ?? '?';
     completionTokens = response.usage?.output_tokens ?? '?';
     console.log(`[orchestrator:${section}] symbol=${symbol} model=${model} webSearch=true latencyMs=${Date.now() - start}`);
   } else {
     model = AI_CONFIG.chatModel;
-    const response = await client.chat.completions.create({
+    const response = await openAIQueue.add(() => client.chat.completions.create({
       model,
       stream: false,
       temperature: AI_CONFIG.temperature,
@@ -219,7 +227,7 @@ async function callGPT(opts: {
         { role: 'system', content: resolvedSystemPrompt },
         { role: 'user', content: prompt },
       ] as ChatCompletionMessageParam[],
-    });
+    }));
     text = response.choices[0]?.message?.content ?? '{}';
     promptTokens = response.usage?.prompt_tokens ?? '?';
     completionTokens = response.usage?.completion_tokens ?? '?';

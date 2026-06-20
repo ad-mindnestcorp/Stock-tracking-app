@@ -73,6 +73,7 @@ async function request<T>(
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         ...(userId ? { 'x-user-id': userId } : {}),
         ...(options.headers ?? {}),
       },
@@ -239,6 +240,51 @@ function marketSymbolPath(symbol: string): string {
   return encodeURIComponent(symbol.trim().toUpperCase());
 }
 
+export interface MarketNewsItem {
+  id: number;
+  category: string;
+  datetime: number;
+  headline: string;
+  image: string;
+  related: string;
+  source: string;
+  summary: string;
+  url: string;
+}
+
+export interface EarningsCalendarItem {
+  symbol: string;
+  date: string;
+  hour: 'bmo' | 'amc' | 'dmh' | '';
+  epsActual: number | null;
+  epsEstimate: number | null;
+  revenueActual: number | null;
+  revenueEstimate: number | null;
+  year: number;
+  quarter: number;
+}
+
+export interface EconomicCalendarItem {
+  country: string;
+  event: string;
+  impact: 'low' | 'medium' | 'high' | '';
+  time: string;
+  unit: string;
+  prev: number | null;
+  estimate: number | null;
+  actual: number | null;
+}
+
+export interface BackendCompanyProfile {
+  symbol: string;
+  name: string;
+  logo: string;
+  exchange: string;
+  industry: string;
+  marketCap: number;
+  shareOutstanding: number;
+}
+
 export const marketApi = {
   getHome: () => request<HomeData>('/api/market/home'),
   getQuote: (symbol: string) =>
@@ -250,6 +296,13 @@ export const marketApi = {
   getIndexes: () => request<IndexCardData[]>('/api/market/indexes'),
   getSectors: () => request<SectorData[]>('/api/market/sectors'),
   getUnusualVolume: () => request<UnusualVolumeStock[]>('/api/market/unusual-volume'),
+  getNews: (category = 'general') =>
+    request<MarketNewsItem[]>(`/api/market/news?category=${encodeURIComponent(category)}`),
+  getEarningsCalendar: (from: string, to: string) =>
+    request<EarningsCalendarItem[]>(`/api/market/earnings-calendar?from=${from}&to=${to}`),
+  getEconomicCalendar: () => request<EconomicCalendarItem[]>('/api/market/economic-calendar'),
+  getCompanyProfile: (symbol: string) =>
+    request<StockQuote & { profile: BackendCompanyProfile | null }>(`/api/market/quote/${marketSymbolPath(symbol)}`),
 };
 
 // ─── Watchlist ────────────────────────────────────────────────────────────────

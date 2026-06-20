@@ -50,6 +50,20 @@ function setCached<T>(key: string, data: T, ttlMs: number): void {
   cache.set(key, { data, expiresAt: Date.now() + ttlMs });
 }
 
+// In-flight deduplication — if a fetch for `key` is already in-flight, return
+// the same promise instead of firing a second API call. This prevents the
+// thundering-herd where N users simultaneously open the app and all get a cache
+// miss for the same symbol before the first response has written to the cache.
+const inFlight = new Map<string, Promise<unknown>>();
+
+function dedupe<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const existing = inFlight.get(key);
+  if (existing) return existing as Promise<T>;
+  const request = fetcher().finally(() => inFlight.delete(key));
+  inFlight.set(key, request);
+  return request;
+}
+
 const TTL = {
   QUOTE: 60_000,              // 60 s  — live price data
   VOLUME: 60_000,             // 60 s  — intraday volume
@@ -116,45 +130,47 @@ async function getVolumeFromYahoo(symbol: string): Promise<number | undefined> {
   }
 }
 
-/** Fetch real-time quote for a symbol (cached 60 s) */
-export async function getQuote(symbol: string): Promise<StockQuote> {
+/** Fetch real-time quote for a symbol (cached 60 s, in-flight deduplicated) */
+export function getQuote(symbol: string): Promise<StockQuote> {
   const key = `quote:${symbol}`;
   const cached = getCached<StockQuote>(key);
-  if (cached) return cached;
+  if (cached) return Promise.resolve(cached);
 
-  try {
-    const res = await axios.get(`${BASE_URL}/quote`, {
-      params: { symbol, token: API_KEY },
-      timeout: 8000,
-    });
-    const d = res.data;
-    let volume: number | undefined = d.v != null && d.v > 0 ? d.v : undefined;
-    if (volume == null) {
-      volume = await getVolumeFromYahoo(symbol);
+  return dedupe(key, async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/quote`, {
+        params: { symbol, token: API_KEY },
+        timeout: 8000,
+      });
+      const d = res.data;
+      let volume: number | undefined = d.v != null && d.v > 0 ? d.v : undefined;
+      if (volume == null) {
+        volume = await getVolumeFromYahoo(symbol);
+      }
+
+      const quote: StockQuote = {
+        symbol,
+        currentPrice: d.c,
+        change: d.d,
+        changePercent: d.dp,
+        high: d.h,
+        low: d.l,
+        open: d.o,
+        previousClose: d.pc,
+        volume,
+      };
+      setCached(key, quote, TTL.QUOTE);
+      return quote;
+    } catch (err) {
+      log({
+        level: 'error',
+        tag: '[finnhub]',
+        message: `getQuote failed for ${symbol}`,
+        context: { symbol, status: axiosStatus(err), error: errorMessage(err) },
+      });
+      throw err;
     }
-
-    const quote: StockQuote = {
-      symbol,
-      currentPrice: d.c,
-      change: d.d,
-      changePercent: d.dp,
-      high: d.h,
-      low: d.l,
-      open: d.o,
-      previousClose: d.pc,
-      volume,
-    };
-    setCached(key, quote, TTL.QUOTE);
-    return quote;
-  } catch (err) {
-    log({
-      level: 'error',
-      tag: '[finnhub]',
-      message: `getQuote failed for ${symbol}`,
-      context: { symbol, status: axiosStatus(err), error: errorMessage(err) },
-    });
-    throw err;
-  }
+  });
 }
 
 /**
@@ -386,38 +402,40 @@ async function getDailyDataFromYahoo(symbol: string, days = 365): Promise<Week52
   }
 }
 
-/** Derive 52-week high/low and close prices from daily candle data (cached 10 min).
+/** Derive 52-week high/low and close prices from daily candle data (cached 10 min, in-flight deduplicated).
  *  Tries Finnhub first; falls back to Yahoo Finance if candles are unavailable. */
-export async function getWeek52Data(symbol: string): Promise<Week52Data | null> {
+export function getWeek52Data(symbol: string): Promise<Week52Data | null> {
   const key = `week52:${symbol}`;
   const cached = getCached<Week52Data>(key);
-  if (cached) return cached;
+  if (cached) return Promise.resolve(cached);
 
-  // Try Finnhub candles first; on failure (free-tier 403) fall back to Yahoo Finance
-  const candles = await getDailyCandles(symbol, 365);
-  let result: Week52Data | null = null;
+  return dedupe(key, async () => {
+    // Try Finnhub candles first; on failure (free-tier 403) fall back to Yahoo Finance
+    const candles = await getDailyCandles(symbol, 365);
+    let result: Week52Data | null = null;
 
-  if (candles && candles.close.length >= 15) {
-    const last30Vols = candles.volume.slice(-30).filter((v) => v != null && v > 0);
-    const avgVolume = last30Vols.length > 0
-      ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
-      : undefined;
-    result = {
-      high52w: Math.max(...candles.high),
-      low52w:  Math.min(...candles.low),
-      closes:  candles.close,
-      avgVolume,
-      recentHighs: candles.high.slice(-30),
-      recentLows:  candles.low.slice(-30),
-    };
-  } else {
-    result = await getDailyDataFromYahoo(symbol);
-  }
+    if (candles && candles.close.length >= 15) {
+      const last30Vols = candles.volume.slice(-30).filter((v) => v != null && v > 0);
+      const avgVolume = last30Vols.length > 0
+        ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
+        : undefined;
+      result = {
+        high52w: Math.max(...candles.high),
+        low52w:  Math.min(...candles.low),
+        closes:  candles.close,
+        avgVolume,
+        recentHighs: candles.high.slice(-30),
+        recentLows:  candles.low.slice(-30),
+      };
+    } else {
+      result = await getDailyDataFromYahoo(symbol);
+    }
 
-  if (!result) return null;
+    if (!result) return null;
 
-  setCached(key, result, TTL.WEEK52);
-  return result;
+    setCached(key, result, TTL.WEEK52);
+    return result;
+  });
 }
 
 /**
@@ -608,6 +626,103 @@ export async function getBasicFinancials(symbol: string): Promise<BasicFinancial
   } catch (err) {
     log({ level: 'warn', tag: '[finnhub]', message: `getBasicFinancials failed for ${symbol}`, context: { symbol, status: axiosStatus(err), error: errorMessage(err) } });
     return null;
+  }
+}
+
+// ─── Market News & Calendar endpoints ────────────────────────────────────────
+
+export interface MarketNewsItem {
+  id: number;
+  category: string;
+  datetime: number;
+  headline: string;
+  image: string;
+  related: string;
+  source: string;
+  summary: string;
+  url: string;
+}
+
+export interface EarningsCalendarItem {
+  symbol: string;
+  date: string;
+  hour: 'bmo' | 'amc' | 'dmh' | '';
+  epsActual: number | null;
+  epsEstimate: number | null;
+  revenueActual: number | null;
+  revenueEstimate: number | null;
+  year: number;
+  quarter: number;
+}
+
+export interface EconomicCalendarItem {
+  country: string;
+  event: string;
+  impact: 'low' | 'medium' | 'high' | '';
+  time: string;
+  unit: string;
+  prev: number | null;
+  estimate: number | null;
+  actual: number | null;
+}
+
+/** Fetch general market news (cached 5 min) */
+export async function getMarketNews(category = 'general'): Promise<MarketNewsItem[]> {
+  const key = `market-news:${category}`;
+  const cached = getCached<MarketNewsItem[]>(key);
+  if (cached) return cached;
+
+  try {
+    const res = await axios.get(`${BASE_URL}/news`, {
+      params: { category, token: API_KEY },
+      timeout: 8000,
+    });
+    const items = (res.data ?? []) as MarketNewsItem[];
+    setCached(key, items, 5 * 60_000);
+    return items;
+  } catch (err) {
+    log({ level: 'warn', tag: '[finnhub]', message: `getMarketNews failed`, context: { category, error: errorMessage(err) } });
+    return [];
+  }
+}
+
+/** Fetch earnings calendar for a date range (cached 1 h) */
+export async function getEarningsCalendar(from: string, to: string): Promise<EarningsCalendarItem[]> {
+  const key = `earnings-calendar:${from}:${to}`;
+  const cached = getCached<EarningsCalendarItem[]>(key);
+  if (cached) return cached;
+
+  try {
+    const res = await axios.get(`${BASE_URL}/calendar/earnings`, {
+      params: { from, to, token: API_KEY },
+      timeout: 8000,
+    });
+    const items = (res.data?.earningsCalendar ?? []) as EarningsCalendarItem[];
+    setCached(key, items, 60 * 60_000);
+    return items;
+  } catch (err) {
+    log({ level: 'warn', tag: '[finnhub]', message: `getEarningsCalendar failed`, context: { from, to, error: errorMessage(err) } });
+    return [];
+  }
+}
+
+/** Fetch economic calendar (cached 1 h) */
+export async function getEconomicCalendar(): Promise<EconomicCalendarItem[]> {
+  const key = 'economic-calendar';
+  const cached = getCached<EconomicCalendarItem[]>(key);
+  if (cached) return cached;
+
+  try {
+    const res = await axios.get(`${BASE_URL}/calendar/economic`, {
+      params: { token: API_KEY },
+      timeout: 8000,
+    });
+    const items = (res.data?.economicCalendar ?? []) as EconomicCalendarItem[];
+    setCached(key, items, 60 * 60_000);
+    return items;
+  } catch (err) {
+    log({ level: 'warn', tag: '[finnhub]', message: `getEconomicCalendar failed`, context: { error: errorMessage(err) } });
+    return [];
   }
 }
 

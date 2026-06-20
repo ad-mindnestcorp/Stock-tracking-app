@@ -2,16 +2,13 @@ import { Router, Request, Response } from 'express';
 import { Expo } from 'expo-server-sdk';
 import { supabase } from '../lib/supabase';
 import { triggerNow } from '../services/scheduler.service';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-function getUserId(req: Request): string {
-  return (req.headers['x-user-id'] as string) || process.env.DEV_USER_ID || 'dev-user';
-}
-
 /** POST /api/push-token — register an Expo push token */
-router.post('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+router.post('/', requireAuth, async (req: Request, res: Response) => {
+  const userId = req.userId;
   const { token } = req.body as { token?: string };
 
   if (!token || !Expo.isExpoPushToken(token)) {
@@ -27,8 +24,8 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /** DELETE /api/push-token — unregister token */
-router.delete('/', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
+router.delete('/', requireAuth, async (req: Request, res: Response) => {
+  const userId = req.userId;
   const { token } = req.body as { token?: string };
 
   if (!token) return res.status(400).json({ error: 'token is required' });

@@ -1,10 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  fetchEarningsCalendar,
-  fetchCompanyProfile,
-  type CompanyProfile,
-  type EarningsCalendarItem,
-} from '@/lib/finnhub-direct';
+import { marketApi, type EarningsCalendarItem, type BackendCompanyProfile } from '@/lib/api';
 
 function pad(n: number): string {
   return n.toString().padStart(2, '0');
@@ -20,22 +15,26 @@ function addDays(d: Date, n: number): Date {
   return result;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const ALLOWED_EXCHANGES = ['NASDAQ', 'NYSE'];
 const MIN_MARKET_CAP_M = 2_000; // $2B in $M units
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 200;
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function fetchProfilesBatched(
   symbols: string[]
-): Promise<Map<string, CompanyProfile>> {
-  const result = new Map<string, CompanyProfile>();
+): Promise<Map<string, BackendCompanyProfile>> {
+  const result = new Map<string, BackendCompanyProfile>();
   for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
     const batch = symbols.slice(i, i + BATCH_SIZE);
-    const profiles = await Promise.all(batch.map(fetchCompanyProfile));
+    const profiles = await Promise.all(
+      batch.map((sym) =>
+        marketApi.getCompanyProfile(sym).then((r) => r.profile).catch(() => null)
+      )
+    );
     batch.forEach((sym, idx) => {
       const p = profiles[idx];
       if (p) result.set(sym, p);
@@ -49,7 +48,7 @@ export interface ImportantEarningsEntry {
   symbol: string;
   name: string;
   exchange: string;
-  marketCapitalization: number;
+  marketCap: number;
   logo: string;
   date: string;
   hour: EarningsCalendarItem['hour'];
@@ -68,7 +67,7 @@ function isAllowedExchange(exchange: string): boolean {
 }
 
 function byMarketCapDesc(a: ImportantEarningsEntry, b: ImportantEarningsEntry): number {
-  return b.marketCapitalization - a.marketCapitalization;
+  return b.marketCap - a.marketCap;
 }
 
 async function loadImportantEarnings(): Promise<ImportantEarningsData> {
@@ -79,7 +78,7 @@ async function loadImportantEarnings(): Promise<ImportantEarningsData> {
   const day2Str = formatYMD(addDays(today, 2));
   const day7Str = formatYMD(day7);
 
-  const calendar = await fetchEarningsCalendar(todayStr, day7Str);
+  const calendar = await marketApi.getEarningsCalendar(todayStr, day7Str);
 
   const uniqueSymbols = [...new Set(calendar.map((e) => e.symbol))];
   const profileMap = await fetchProfilesBatched(uniqueSymbols);
@@ -88,13 +87,13 @@ async function loadImportantEarnings(): Promise<ImportantEarningsData> {
   for (const item of calendar) {
     const profile = profileMap.get(item.symbol);
     if (!profile) continue;
-    if (profile.marketCapitalization < MIN_MARKET_CAP_M) continue;
+    if (profile.marketCap < MIN_MARKET_CAP_M) continue;
     if (!isAllowedExchange(profile.exchange)) continue;
     entries.push({
       symbol: item.symbol,
       name: profile.name,
       exchange: profile.exchange,
-      marketCapitalization: profile.marketCapitalization,
+      marketCap: profile.marketCap,
       logo: profile.logo,
       date: item.date,
       hour: item.hour,

@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchEarningsCalendar } from '@/lib/finnhub-direct';
+import { marketApi, type EarningsCalendarItem } from '@/lib/api';
+
+export type { EarningsCalendarItem };
 
 function pad(n: number): string {
   return n.toString().padStart(2, '0');
@@ -29,7 +31,7 @@ export function useEarningsCalendar(monthAnchor: Date = new Date()) {
 
   return useQuery({
     queryKey: ['market', 'earnings-calendar', monthKey],
-    queryFn: () => fetchEarningsCalendar(from, to),
+    queryFn: () => marketApi.getEarningsCalendar(from, to),
     staleTime: 60 * 60_000,
     refetchInterval: 60 * 60_000,
   });

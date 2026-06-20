@@ -7,27 +7,27 @@ type AlertType = '52w_high' | '52w_low' | 'rsi_overbought' | 'rsi_oversold';
 
 const ALERT_COOLDOWN_HOURS = 24;
 
-/** Check if an alert of this type was already sent for this stock today */
-async function isDuplicate(
+/**
+ * Fetch all alert types already sent for this (userId, symbol) pair in the
+ * last 24 hours — one DB query instead of one query per alert type.
+ */
+async function getRecentAlertTypes(
   userId: string,
   symbol: string,
-  alertType: AlertType
-): Promise<boolean> {
+): Promise<Set<AlertType>> {
   const cutoff = new Date(Date.now() - ALERT_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('alerts_log')
-    .select('id')
+    .select('alert_type')
     .eq('user_id', userId)
     .eq('symbol', symbol)
-    .eq('alert_type', alertType)
-    .gte('triggered_at', cutoff)
-    .limit(1);
+    .gte('triggered_at', cutoff);
 
   if (error) {
-    console.error('Duplicate check error:', error);
-    return false;
+    console.error('Recent alert check error:', error);
+    return new Set();
   }
-  return (data?.length ?? 0) > 0;
+  return new Set((data ?? []).map(r => r.alert_type as AlertType));
 }
 
 /** Persist an alert and send push notification */
@@ -91,74 +91,41 @@ export async function checkAlertsForStock(userId: string, symbol: string): Promi
     const { high52w, low52w, closes } = week52;
     const rsiResult = calculateRSI(closes);
 
-    // 52-week high alert
+    // Single DB query for all alert types sent in the last 24h for this stock
+    const recentAlerts = await getRecentAlertTypes(userId, symbol);
+
     const THRESHOLD = 0.005; // within 0.5% of 52w high/low counts as hit
-    if (currentPrice >= high52w * (1 - THRESHOLD)) {
-      const isDup = await isDuplicate(userId, symbol, '52w_high');
-      if (!isDup) {
-        await fireAlert(
-          userId,
-          symbol,
-          '52w_high',
-          `${symbol} is trading near its 52-week high of $${high52w.toFixed(2)}. Current: $${currentPrice.toFixed(2)}`,
-          currentPrice,
-          undefined,
-          high52w,
-          low52w
-        );
-      }
+
+    if (currentPrice >= high52w * (1 - THRESHOLD) && !recentAlerts.has('52w_high')) {
+      await fireAlert(
+        userId, symbol, '52w_high',
+        `${symbol} is trading near its 52-week high of $${high52w.toFixed(2)}. Current: $${currentPrice.toFixed(2)}`,
+        currentPrice, undefined, high52w, low52w,
+      );
     }
 
-    // 52-week low alert
-    if (currentPrice <= low52w * (1 + THRESHOLD)) {
-      const isDup = await isDuplicate(userId, symbol, '52w_low');
-      if (!isDup) {
-        await fireAlert(
-          userId,
-          symbol,
-          '52w_low',
-          `${symbol} is trading near its 52-week low of $${low52w.toFixed(2)}. Current: $${currentPrice.toFixed(2)}`,
-          currentPrice,
-          undefined,
-          high52w,
-          low52w
-        );
-      }
+    if (currentPrice <= low52w * (1 + THRESHOLD) && !recentAlerts.has('52w_low')) {
+      await fireAlert(
+        userId, symbol, '52w_low',
+        `${symbol} is trading near its 52-week low of $${low52w.toFixed(2)}. Current: $${currentPrice.toFixed(2)}`,
+        currentPrice, undefined, high52w, low52w,
+      );
     }
 
-    // RSI alerts
-    if (rsiResult) {
-      if (rsiResult.isOverbought) {
-        const isDup = await isDuplicate(userId, symbol, 'rsi_overbought');
-        if (!isDup) {
-          await fireAlert(
-            userId,
-            symbol,
-            'rsi_overbought',
-            `${symbol} RSI is ${rsiResult.rsi} — overbought signal (>70). Consider taking profits.`,
-            currentPrice,
-            rsiResult.rsi,
-            high52w,
-            low52w
-          );
-        }
-      }
+    if (rsiResult?.isOverbought && !recentAlerts.has('rsi_overbought')) {
+      await fireAlert(
+        userId, symbol, 'rsi_overbought',
+        `${symbol} RSI is ${rsiResult.rsi} — overbought signal (>70). Consider taking profits.`,
+        currentPrice, rsiResult.rsi, high52w, low52w,
+      );
+    }
 
-      if (rsiResult.isOversold) {
-        const isDup = await isDuplicate(userId, symbol, 'rsi_oversold');
-        if (!isDup) {
-          await fireAlert(
-            userId,
-            symbol,
-            'rsi_oversold',
-            `${symbol} RSI is ${rsiResult.rsi} — oversold signal (<30). Potential buying opportunity.`,
-            currentPrice,
-            rsiResult.rsi,
-            high52w,
-            low52w
-          );
-        }
-      }
+    if (rsiResult?.isOversold && !recentAlerts.has('rsi_oversold')) {
+      await fireAlert(
+        userId, symbol, 'rsi_oversold',
+        `${symbol} RSI is ${rsiResult.rsi} — oversold signal (<30). Potential buying opportunity.`,
+        currentPrice, rsiResult.rsi, high52w, low52w,
+      );
     }
   } catch (err) {
     console.error(`Alert check failed for ${symbol} (user ${userId}):`, err);

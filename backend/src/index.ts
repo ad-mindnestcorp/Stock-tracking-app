@@ -3,6 +3,7 @@ dotenv.config();
 
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
 import { log, errorMessage } from "./utils/logger";
@@ -14,9 +15,8 @@ import newsRouter from "./routes/news";
 import pushTokenRouter from "./routes/push-token";
 import stocksRouter from "./routes/stocks";
 import watchlistsRouter from "./routes/watchlists";
-import { POPULAR_SYMBOLS, getCompanyProfile } from "./services/finnhub.service";
-import { getUnusualVolumeStocks } from "./services/polygon.service";
 import { startScheduler } from "./services/scheduler.service";
+import { initMarketCache } from "./services/market-cache.service";
 import {
     addClientSubscription,
     initFinnhubWebSocket,
@@ -29,6 +29,26 @@ const PORT = process.env.PORT ?? 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+// Applied per-path before route mounts so each path gets its own window.
+// AI endpoints are tightest (expensive OpenAI calls); market is moderate;
+// general API (stocks/watchlists/alerts) gets a generous ceiling.
+app.use(
+  '/api/ai',
+  rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false,
+    message: { error: 'Too many AI requests — please wait a minute and try again.' } })
+);
+app.use(
+  '/api/market',
+  rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
+    message: { error: 'Too many market data requests — please wait a minute and try again.' } })
+);
+app.use(
+  '/api',
+  rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false,
+    message: { error: 'Too many requests — please wait a minute and try again.' } })
+);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
@@ -113,12 +133,5 @@ httpServer.listen(PORT, () => {
   console.log(`Stockvest backend running on http://localhost:${PORT}`);
   initFinnhubWebSocket();
   startScheduler();
-  Promise.allSettled(POPULAR_SYMBOLS.map((s) => getCompanyProfile(s)))
-    .then(() => {
-      console.log("[startup] Company profile cache pre-warmed");
-      return getUnusualVolumeStocks();
-    })
-    .then(() => {
-      console.log("[startup] Unusual volume cache pre-warmed");
-    });
+  initMarketCache();
 });
