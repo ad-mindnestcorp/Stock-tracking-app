@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { log, errorMessage, axiosStatus } from '../utils/logger';
+import { getLatestWsPrice } from './websocket.service';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const YahooFinanceClass = require('yahoo-finance2').default as new (opts?: Record<string, unknown>) => {
   historical: (
@@ -65,12 +66,12 @@ function dedupe<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
 }
 
 const TTL = {
-  QUOTE: 60_000,              // 60 s  — live price data
+  QUOTE: 300_000,             // 5 min — WS handles live price; REST refreshes context fields
   VOLUME: 60_000,             // 60 s  — intraday volume
   PROFILE: 86_400_000,        // 24 h  — company info
   CANDLES_INTRADAY: 300_000,  // 5 min
-  CANDLES_DAILY: 600_000,     // 10 min
-  WEEK52: 600_000,            // 10 min
+  CANDLES_DAILY: 3_600_000,   // 60 min
+  WEEK52: 3_600_000,          // 60 min
 };
 
 export interface StockQuote {
@@ -130,10 +131,20 @@ async function getVolumeFromYahoo(symbol: string): Promise<number | undefined> {
   }
 }
 
-/** Fetch real-time quote for a symbol (cached 60 s, in-flight deduplicated) */
+/** Fetch real-time quote for a symbol (WS cache → 5-min TTL cache → Finnhub REST) */
 export function getQuote(symbol: string): Promise<StockQuote> {
   const key = `quote:${symbol}`;
+  const wsPrice = getLatestWsPrice(symbol);
   const cached = getCached<StockQuote>(key);
+
+  if (wsPrice !== null && cached !== null) {
+    const change = wsPrice - cached.previousClose;
+    const changePercent = cached.previousClose > 0
+      ? (change / cached.previousClose) * 100
+      : 0;
+    return Promise.resolve({ ...cached, currentPrice: wsPrice, change, changePercent });
+  }
+
   if (cached) return Promise.resolve(cached);
 
   return dedupe(key, async () => {
@@ -210,11 +221,17 @@ export async function getYahooQuote(
   }
 }
 
-/** Fetch daily candles for the past N days (cached 10 min) */
+/** Fetch daily candles for the past N days (cached 60 min). Tries Yahoo Finance first, Finnhub REST as fallback. */
 export async function getDailyCandles(symbol: string, days = 365): Promise<CandleData | null> {
   const key = `candles:daily:${symbol}:${days}`;
   const cached = getCached<CandleData>(key);
   if (cached) return cached;
+
+  const yahooCandles = await getDailyCandlesFromYahoo(symbol, days);
+  if (yahooCandles) {
+    setCached(key, yahooCandles, TTL.CANDLES_DAILY);
+    return yahooCandles;
+  }
 
   try {
     const to = Math.floor(Date.now() / 1000);
@@ -410,25 +427,25 @@ export function getWeek52Data(symbol: string): Promise<Week52Data | null> {
   if (cached) return Promise.resolve(cached);
 
   return dedupe(key, async () => {
-    // Try Finnhub candles first; on failure (free-tier 403) fall back to Yahoo Finance
-    const candles = await getDailyCandles(symbol, 365);
-    let result: Week52Data | null = null;
+    // Try Yahoo Finance first; fall back to Finnhub candles if unavailable
+    let result: Week52Data | null = await getDailyDataFromYahoo(symbol);
 
-    if (candles && candles.close.length >= 15) {
-      const last30Vols = candles.volume.slice(-30).filter((v) => v != null && v > 0);
-      const avgVolume = last30Vols.length > 0
-        ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
-        : undefined;
-      result = {
-        high52w: Math.max(...candles.high),
-        low52w:  Math.min(...candles.low),
-        closes:  candles.close,
-        avgVolume,
-        recentHighs: candles.high.slice(-30),
-        recentLows:  candles.low.slice(-30),
-      };
-    } else {
-      result = await getDailyDataFromYahoo(symbol);
+    if (!result) {
+      const candles = await getDailyCandles(symbol, 365);
+      if (candles && candles.close.length >= 15) {
+        const last30Vols = candles.volume.slice(-30).filter((v) => v != null && v > 0);
+        const avgVolume = last30Vols.length > 0
+          ? last30Vols.reduce((sum, v) => sum + v, 0) / last30Vols.length
+          : undefined;
+        result = {
+          high52w: Math.max(...candles.high),
+          low52w:  Math.min(...candles.low),
+          closes:  candles.close,
+          avgVolume,
+          recentHighs: candles.high.slice(-30),
+          recentLows:  candles.low.slice(-30),
+        };
+      }
     }
 
     if (!result) return null;

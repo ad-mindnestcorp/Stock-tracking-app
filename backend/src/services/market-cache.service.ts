@@ -173,10 +173,10 @@ export async function initMarketCache(): Promise<void> {
   ]);
   log({ level: 'info', tag: '[market-cache]', message: 'Market data cache initialised' });
 
-  // Refresh indexes every 60s (matches client poll interval)
-  setInterval(refreshIndexes, 60_000);
-  // Refresh sectors, home, unusual-volume every 5 min (matches client poll interval)
-  setInterval(refreshSectors,      5 * 60_000);
-  setInterval(refreshHome,         5 * 60_000);
-  setInterval(refreshUnusualVolume, 5 * 60_000);
+  // Refresh indexes every 3 min
+  setInterval(refreshIndexes, 3 * 60_000);
+  // Refresh sectors, home, unusual-volume every 15 min
+  setInterval(refreshSectors,      15 * 60_000);
+  setInterval(refreshHome,         15 * 60_000);
+  setInterval(refreshUnusualVolume, 15 * 60_000);
 }

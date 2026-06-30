@@ -22,7 +22,9 @@ import {
     initFinnhubWebSocket,
     removeClient,
     removeClientSubscription,
+    subscribeSymbols,
 } from "./services/websocket.service";
+import { supabase } from "./lib/supabase";
 
 const app = express();
 const PORT = process.env.PORT ?? 3000;
@@ -134,4 +136,16 @@ httpServer.listen(PORT, () => {
   initFinnhubWebSocket();
   startScheduler();
   initMarketCache();
+  (async () => {
+    try {
+      const { data } = await supabase.from('watchlist_stocks').select('symbol');
+      if (data && data.length > 0) {
+        const symbols = [...new Set(data.map((r: { symbol: string }) => r.symbol))];
+        subscribeSymbols(symbols);
+        log({ level: 'info', tag: '[startup]', message: `Pre-subscribed ${symbols.length} watchlist symbols to WS` });
+      }
+    } catch (err) {
+      log({ level: 'warn', tag: '[startup]', message: 'Failed to pre-subscribe watchlist symbols', context: { error: errorMessage(err) } });
+    }
+  })();
 });

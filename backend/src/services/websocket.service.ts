@@ -8,8 +8,26 @@ interface FinnhubTradeMsg {
 // symbol → connected client WebSockets
 const subscriptions = new Map<string, Set<WebSocket>>();
 
-// symbol → latest known trade price (for immediate delivery on connect)
-const latestPrices = new Map<string, number>();
+// symbol → latest known trade price + timestamp (for WS cache and immediate delivery on connect)
+const latestPrices = new Map<string, { price: number; receivedAt: number }>();
+
+// Throttle buffer: accumulates latest price per symbol, flushed to clients once per second
+const broadcastBuffer = new Map<string, { price: number; timestamp: number }>();
+
+const WS_PRICE_MAX_AGE_MS = 90_000;
+
+// Drain broadcast buffer every second — prevents flooding clients with every tick
+setInterval(() => {
+  for (const [symbol, { price, timestamp }] of broadcastBuffer) {
+    broadcastBuffer.delete(symbol);
+    const clients = subscriptions.get(symbol);
+    if (!clients?.size) continue;
+    const payload = JSON.stringify({ type: 'price', symbol, price, timestamp });
+    for (const client of clients) {
+      if (client.readyState === WebSocket.OPEN) client.send(payload);
+    }
+  }
+}, 1000).unref();
 
 let finnhubWs: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -57,23 +75,8 @@ function connectFinnhub() {
       if (msg.type !== 'trade' || !msg.data) return;
 
       for (const trade of msg.data) {
-        latestPrices.set(trade.s, trade.p);
-
-        const clients = subscriptions.get(trade.s);
-        if (!clients?.size) continue;
-
-        const payload = JSON.stringify({
-          type: 'price',
-          symbol: trade.s,
-          price: trade.p,
-          timestamp: trade.t,
-        });
-
-        for (const client of clients) {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-          }
-        }
+        latestPrices.set(trade.s, { price: trade.p, receivedAt: trade.t });
+        broadcastBuffer.set(trade.s, { price: trade.p, timestamp: trade.t });
       }
     } catch {
       // ignore malformed messages
@@ -115,7 +118,7 @@ export function addClientSubscription(client: WebSocket, symbols: string[]) {
     const latest = latestPrices.get(symbol);
     if (latest !== undefined && client.readyState === WebSocket.OPEN) {
       client.send(
-        JSON.stringify({ type: 'price', symbol, price: latest, timestamp: Date.now() })
+        JSON.stringify({ type: 'price', symbol, price: latest.price, timestamp: latest.receivedAt })
       );
     }
   }
@@ -141,6 +144,24 @@ export function removeClient(client: WebSocket) {
     if (clients.size === 0) {
       subscriptions.delete(symbol);
       unsubscribeFinnhub(symbol);
+    }
+  }
+}
+
+/** Return the latest WS price for a symbol if received within the last 90 seconds, null otherwise */
+export function getLatestWsPrice(symbol: string): number | null {
+  const entry = latestPrices.get(symbol);
+  if (!entry) return null;
+  if (Date.now() - entry.receivedAt > WS_PRICE_MAX_AGE_MS) return null;
+  return entry.price;
+}
+
+/** Subscribe a list of symbols to the Finnhub WS, skipping any already subscribed */
+export function subscribeSymbols(symbols: string[]) {
+  for (const symbol of symbols) {
+    if (!subscriptions.has(symbol)) {
+      subscriptions.set(symbol, new Set());
+      subscribeFinnhub(symbol);
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { searchSymbols, getQuote } from '../services/finnhub.service';
+import { subscribeSymbols } from '../services/websocket.service';
 import { enrichStocks } from '../services/enrich-stocks.service';
 import { requireAuth } from '../middleware/auth';
 
@@ -205,6 +206,8 @@ router.post('/:id/stocks', async (req: Request, res: Response) => {
   await supabase
     .from('user_stocks')
     .upsert({ user_id: userId, symbol: cleanSymbol, company_name: company_name ?? null }, { onConflict: 'user_id,symbol' });
+
+  subscribeSymbols([cleanSymbol]);
 
   return res.status(201).json(data);
 });

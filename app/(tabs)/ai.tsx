@@ -20,12 +20,8 @@ import { useAIResearch } from '@/hooks/use-ai-research';
 import { StockSummaryCard } from '@/components/ai/stock-summary-card';
 import { ResearchSectionCard } from '@/components/ai/research-section-card';
 import { AIVerdictCard } from '@/components/ai/ai-verdict-card';
-import { TierSelectionModal } from '@/components/ai/tier-selection-modal';
 import { SECTION_META, TIER_SECTIONS } from '@/lib/ai-types';
 import type { SectionKey, SectionState, AIResearchFoundation, AIValuationFinancials, AIRiskRedTeaming, AITechnicals, ResearchTier } from '@/lib/ai-types';
-
-const TABS = ['Overview', 'Financials', 'Risks', 'News', 'Sources'] as const;
-type Tab = (typeof TABS)[number];
 
 function getSectionInsightCount(
   state: SectionState<any>,
@@ -134,8 +130,6 @@ export default function AIScreen() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null);
   const [selectedTier, setSelectedTier] = useState<ResearchTier | null>(null);
-  const [showTierModal, setShowTierModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -168,13 +162,7 @@ export default function AIScreen() {
     setQuery(stock.symbol);
     setDropdownOpen(false);
     setDebouncedQuery('');
-    setActiveTab('Overview');
-    setSelectedTier(null);
-    setShowTierModal(true);
-  };
-
-  const handleSelectTier = (tier: ResearchTier) => {
-    setSelectedTier(tier);
+    setSelectedTier('basic');
   };
 
   const handleClear = () => {
@@ -272,13 +260,6 @@ export default function AIScreen() {
             )}
           </View>
 
-          {/* Tier selection modal */}
-          <TierSelectionModal
-            visible={showTierModal}
-            onClose={() => setShowTierModal(false)}
-            onSelectTier={handleSelectTier}
-          />
-
           {/* Stock selected: show full research UI */}
           {selectedStock && selectedTier && (
             <>
@@ -302,74 +283,37 @@ export default function AIScreen() {
                 </View>
               )}
 
-              {/* Tab navigation */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.tabScroll}
-                contentContainerStyle={styles.tabRow}
-              >
-                {TABS.map((tab) => (
-                  <TouchableOpacity
-                    key={tab}
-                    style={[styles.tab, activeTab === tab && styles.tabActive]}
-                    onPress={() => setActiveTab(tab)}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: activeTab === tab }}
-                  >
-                    <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                      {tab}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              {/* Research sections */}
+              {currentTierSections.map((key) => (
+                <SectionCardWithState
+                  key={key}
+                  sectionKey={key}
+                  state={sections[key] as SectionState<any>}
+                  onPress={() => handleSectionPress(key)}
+                />
+              ))}
 
-              {/* Overview tab content */}
-              {activeTab === 'Overview' && (
-                <>
-                  {currentTierSections.map((key) => (
-                    <SectionCardWithState
-                      key={key}
-                      sectionKey={key}
-                      state={sections[key] as SectionState<any>}
-                      onPress={() => handleSectionPress(key)}
-                    />
-                  ))}
-
-                  {/* AI Verdict */}
-                  {sections.ai_verdict.status === 'loading' || sections.ai_verdict.status === 'idle' ? (
-                    <View style={styles.verdictSkeleton}>
-                      <ActivityIndicator size="small" color={HOME.accent} />
-                      <Text style={styles.verdictSkeletonText}>Generating verdict…</Text>
-                    </View>
-                  ) : sections.ai_verdict.status === 'error' ? (
-                    <View style={styles.verdictError}>
-                      <Text style={styles.verdictErrorText}>{sections.ai_verdict.error}</Text>
-                      {sections.ai_verdict.refetch && (
-                        <TouchableOpacity onPress={sections.ai_verdict.refetch} style={styles.retryInline}>
-                          <Text style={styles.retryInlineText}>Retry verdict</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ) : sections.ai_verdict.data ? (
-                    <>
-                      <View style={styles.verdictSpacer} />
-                      <AIVerdictCard verdict={sections.ai_verdict.data} />
-                    </>
-                  ) : null}
-                </>
-              )}
-
-              {/* Non-overview tabs — coming soon */}
-              {activeTab !== 'Overview' && (
-                <View style={styles.comingSoonBlock}>
-                  <Ionicons name="construct-outline" size={36} color={HOME.textMuted} />
-                  <Text style={styles.comingSoonTitle}>{activeTab} coming soon</Text>
-                  <Text style={styles.comingSoonText}>
-                    This tab will be available in the next update.
-                  </Text>
+              {/* AI Verdict */}
+              {sections.ai_verdict.status === 'loading' || sections.ai_verdict.status === 'idle' ? (
+                <View style={styles.verdictSkeleton}>
+                  <ActivityIndicator size="small" color={HOME.accent} />
+                  <Text style={styles.verdictSkeletonText}>Generating verdict…</Text>
                 </View>
-              )}
+              ) : sections.ai_verdict.status === 'error' ? (
+                <View style={styles.verdictError}>
+                  <Text style={styles.verdictErrorText}>{sections.ai_verdict.error}</Text>
+                  {sections.ai_verdict.refetch && (
+                    <TouchableOpacity onPress={sections.ai_verdict.refetch} style={styles.retryInline}>
+                      <Text style={styles.retryInlineText}>Retry verdict</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : sections.ai_verdict.data ? (
+                <>
+                  <View style={styles.verdictSpacer} />
+                  <AIVerdictCard verdict={sections.ai_verdict.data} />
+                </>
+              ) : null}
             </>
           )}
 
@@ -511,20 +455,6 @@ const styles = StyleSheet.create({
   summarySymbol: { fontSize: 17, fontWeight: '700', color: HOME.textPrimary },
   summaryName: { fontSize: 12, color: HOME.textSecondary, maxWidth: 200 },
 
-  tabScroll: { marginBottom: 14 },
-  tabRow: { flexDirection: 'row', gap: 4, paddingRight: 8 },
-  tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: HOME.border,
-    backgroundColor: HOME.card,
-  },
-  tabActive: { backgroundColor: HOME.accent, borderColor: HOME.accent },
-  tabText: { fontSize: 13, fontWeight: '600', color: HOME.textSecondary },
-  tabTextActive: { color: '#fff' },
-
   verdictSpacer: { height: 6 },
   verdictSkeleton: {
     flexDirection: 'row',
@@ -557,10 +487,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   retryInlineText: { fontSize: 12, fontWeight: '700', color: HOME.accent },
-
-  comingSoonBlock: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  comingSoonTitle: { fontSize: 16, fontWeight: '700', color: HOME.textSecondary },
-  comingSoonText: { fontSize: 13, color: HOME.textMuted, textAlign: 'center', maxWidth: 240 },
 
   emptyState: { alignItems: 'center', paddingTop: 56, gap: 14 },
   emptyIconWrap: {
