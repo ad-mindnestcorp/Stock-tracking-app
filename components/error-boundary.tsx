@@ -1,6 +1,6 @@
-import { Component, ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors, Radius } from "@/constants/theme";
+import { Component, ReactNode } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 interface Props {
   children: ReactNode;
@@ -14,7 +14,7 @@ interface State {
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, errorMessage: '' };
+    this.state = { hasError: false, errorMessage: "" };
   }
 
   static getDerivedStateFromError(error: Error): State {
@@ -23,11 +23,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
     // Log to console in development; swap for Sentry/Crashlytics in production
-    console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
+    console.error(
+      "[ErrorBoundary] Uncaught error:",
+      error,
+      info.componentStack,
+    );
   }
 
   private handleRestart = () => {
-    this.setState({ hasError: false, errorMessage: '' });
+    this.setState({ hasError: false, errorMessage: "" });
   };
 
   render() {
@@ -46,20 +50,26 @@ export class ErrorBoundary extends Component<Props, State> {
 
         <Text style={styles.headline}>Something went wrong</Text>
         <Text style={styles.subtext}>
-          The app ran into an unexpected problem. Your data is safe — tap below to
-          restart and get back on track.
+          The app ran into an unexpected problem. Your data is safe — tap below
+          to restart and get back on track.
         </Text>
 
         {/* Collapsible error detail (dev-friendly) */}
         {__DEV__ && (
-          <ScrollView style={styles.devBox} contentContainerStyle={styles.devBoxContent}>
+          <ScrollView
+            style={styles.devBox}
+            contentContainerStyle={styles.devBoxContent}
+          >
             <Text style={styles.devLabel}>Error details (dev only)</Text>
             <Text style={styles.devMessage}>{this.state.errorMessage}</Text>
           </ScrollView>
         )}
 
         <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          style={({ pressed }) => [
+            styles.button,
+            pressed && styles.buttonPressed,
+          ]}
           onPress={this.handleRestart}
           accessibilityRole="button"
           accessibilityLabel="Restart the app"
@@ -75,8 +85,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 32,
   },
   badge: {
@@ -84,40 +94,40 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: Radius.xl,
     backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 12,
   },
   badgeLetter: {
     fontSize: 36,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.dark,
   },
   appName: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
     color: Colors.primary,
     letterSpacing: 1,
     marginBottom: 32,
   },
   headline: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textAlign: "center",
     marginBottom: 12,
   },
   subtext: {
     fontSize: 15,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 22,
     marginBottom: 32,
   },
   devBox: {
     maxHeight: 140,
-    width: '100%',
-    backgroundColor: '#111',
+    width: "100%",
+    backgroundColor: "#111",
     borderRadius: Radius.md,
     marginBottom: 24,
   },
@@ -128,13 +138,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     marginBottom: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   devMessage: {
     fontSize: 12,
     color: Colors.negative,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   button: {
     backgroundColor: Colors.primary,
@@ -147,7 +157,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     color: Colors.dark,
   },
 });

@@ -1,20 +1,29 @@
-import { Stack, Redirect } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
-import { useAuth } from '@/context/auth';
-import { Colors } from '@/constants/theme';
+import { Colors } from "@/constants/theme";
+import { useAuth } from "@/context/auth";
+import { Redirect, Stack, useSegments } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
 
 export default function AuthLayout() {
   const { session, loading } = useAuth();
+  const segments = useSegments();
+  const isVerifyEmail = segments[segments.length - 1] === 'verify-email';
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: Colors.background,
+        }}
+      >
         <ActivityIndicator color={Colors.primary} size="large" />
       </View>
     );
   }
 
-  if (session) {
+  if (session && !isVerifyEmail) {
     return <Redirect href="/(tabs)" />;
   }
 

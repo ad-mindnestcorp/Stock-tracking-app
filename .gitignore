@@ -49,3 +49,6 @@ app-example
 
 # AI research logs
 /logs/*.md
+
+# Local Netlify folder
+.netlify
