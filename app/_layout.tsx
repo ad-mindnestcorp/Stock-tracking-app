@@ -14,6 +14,8 @@ import { queryClient } from '@/lib/query-client';
 import { initSentry, Sentry } from '@/lib/sentry';
 import { initI18n } from '@/lib/i18n';
 import { initAnalytics } from '@/lib/analytics';
+import { OnboardingProvider } from '@/context/onboarding-context';
+import { SubscriptionProvider } from '@/context/subscription-context';
 
 // Initialise once before the component tree mounts
 initSentry();
@@ -79,10 +81,15 @@ function RootLayout() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen
           name="stock/[symbol]"
           options={{ headerShown: false, presentation: 'card' }}
+        />
+        <Stack.Screen
+          name="paywall"
+          options={{ headerShown: false, presentation: 'modal' }}
         />
       </Stack>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -102,7 +109,11 @@ function App() {
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
             <AuthProvider>
-              <RootLayout />
+              <OnboardingProvider>
+                <SubscriptionProvider>
+                  <RootLayout />
+                </SubscriptionProvider>
+              </OnboardingProvider>
             </AuthProvider>
           </QueryClientProvider>
         </ThemeProvider>

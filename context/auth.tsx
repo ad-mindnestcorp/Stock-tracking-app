@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { identify, reset, track } from '@/lib/analytics';
+import { getPendingWatchlistSeed, setPendingWatchlistSeed, getOnboardingData } from '@/lib/onboarding-storage';
+import { watchlistApi } from '@/lib/api';
 
 interface AuthContextType {
   session: Session | null;
@@ -34,6 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       if (session?.user) {
         identify(session.user.id, { email: session.user.email });
+      }
+      if (event === 'SIGNED_IN' && session) {
+        getPendingWatchlistSeed().then(async (pending) => {
+          if (!pending) return;
+          await setPendingWatchlistSeed(false);
+          const { selectedStocks } = await getOnboardingData();
+          for (const stock of selectedStocks) {
+            try { await watchlistApi.add(stock.symbol, stock.name); } catch {}
+          }
+        });
       }
       if (event === 'SIGNED_OUT') {
         reset();

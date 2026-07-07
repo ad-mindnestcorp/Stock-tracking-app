@@ -22,6 +22,9 @@ import { ResearchSectionCard } from '@/components/ai/research-section-card';
 import { AIVerdictCard } from '@/components/ai/ai-verdict-card';
 import { SECTION_META, TIER_SECTIONS } from '@/lib/ai-types';
 import type { SectionKey, SectionState, AIResearchFoundation, AIValuationFinancials, AIRiskRedTeaming, AITechnicals, ResearchTier } from '@/lib/ai-types';
+import { useSubscription } from '@/context/subscription-context';
+import { getAIFreeUsed, setAIFreeUsed } from '@/lib/onboarding-storage';
+import { track } from '@/lib/analytics';
 
 function getSectionInsightCount(
   state: SectionState<any>,
@@ -125,12 +128,19 @@ function SectionErrorCard({
 
 export default function AIScreen() {
   const router = useRouter();
+  const { isSubscribed } = useSubscription();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null);
   const [selectedTier, setSelectedTier] = useState<ResearchTier | null>(null);
+  const [freeResearchUsed, setFreeResearchUsed] = useState(false);
+  const [researchCompletedOnce, setResearchCompletedOnce] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    getAIFreeUsed().then(setFreeResearchUsed);
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -157,7 +167,27 @@ export default function AIScreen() {
 
   const sections = useAIResearch(selectedStock?.symbol ?? null, selectedTier);
 
+  // Track free research used once verdict loads successfully
+  useEffect(() => {
+    if (
+      !researchCompletedOnce &&
+      !freeResearchUsed &&
+      sections.ai_verdict.status === 'success' &&
+      sections.ai_verdict.data
+    ) {
+      setResearchCompletedOnce(true);
+      setAIFreeUsed(true);
+      setFreeResearchUsed(true);
+      track('ai_research_free_used', { symbol: selectedStock?.symbol });
+    }
+  }, [sections.ai_verdict.status, sections.ai_verdict.data, freeResearchUsed, researchCompletedOnce, selectedStock]);
+
   const handleSelectStock = (stock: StockSearchResult) => {
+    // Gate: block 2nd+ research for non-subscribers
+    if (freeResearchUsed && !isSubscribed) {
+      router.push({ pathname: '/paywall', params: { trigger: 'ai_research' } });
+      return;
+    }
     setSelectedStock(stock);
     setQuery(stock.symbol);
     setDropdownOpen(false);
@@ -324,6 +354,12 @@ export default function AIScreen() {
                 <Ionicons name="sparkles-outline" size={32} color={HOME.accent} />
               </View>
               <Text style={styles.emptyTitle}>AI Stock Research</Text>
+              {!freeResearchUsed && !isSubscribed && (
+                <View style={styles.freeBadge}>
+                  <Ionicons name="gift-outline" size={13} color="#CCFF00" />
+                  <Text style={styles.freeBadgeText}>1 free report included</Text>
+                </View>
+              )}
               <Text style={styles.emptyText}>
                 Search any ticker to get an instant AI-powered institutional research report.
               </Text>
@@ -498,6 +534,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: HOME.textPrimary },
+  freeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#CCFF0015',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#CCFF0040',
+  },
+  freeBadgeText: { fontSize: 12, fontWeight: '700', color: '#CCFF00' },
   emptyText: { fontSize: 14, color: HOME.textSecondary, textAlign: 'center', lineHeight: 21, maxWidth: 260 },
   emptyFeatures: { gap: 8, marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 32 },
   emptyFeatureRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

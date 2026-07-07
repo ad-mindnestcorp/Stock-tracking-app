@@ -30,7 +30,18 @@ export type AnalyticsEvent =
   | 'alert_read'
   | 'alerts_cleared'
   // Search
-  | 'search_submitted';
+  | 'search_submitted'
+  // Onboarding
+  | 'onboarding_started'
+  | 'onboarding_step_completed'
+  | 'onboarding_completed'
+  | 'first_value_viewed'
+  // AI Research
+  | 'ai_research_free_used'
+  // Subscription / Paywall
+  | 'paywall_viewed'
+  | 'subscription_started'
+  | 'subscription_restored';
 
 let mp: Mixpanel | null = null;
 

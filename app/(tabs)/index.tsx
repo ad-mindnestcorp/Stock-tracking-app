@@ -8,27 +8,63 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 import IndexCardsRow from '@/components/home/index-cards-row';
 import HeatmapCalendarPanel from '@/components/home/heatmap-calendar-panel';
 import TopMoversPanel from '@/components/home/top-movers-panel';
+import YourStocksPanel from '@/components/home/your-stocks-panel';
 import { HOME } from '@/components/home/home-tokens';
+import { useOnboarding } from '@/context/onboarding-context';
+import { track } from '@/lib/analytics';
+import type { OnboardingGoal } from '@/lib/onboarding-storage';
+
+function getPanelOrder(goals: OnboardingGoal[]): ('your_stocks' | 'indexes' | 'movers')[] {
+  if (goals.includes('monitor_portfolio')) {
+    return ['your_stocks', 'indexes', 'movers'];
+  }
+  if (goals.includes('trending_stocks') || goals.includes('momentum')) {
+    return ['indexes', 'movers', 'your_stocks'];
+  }
+  if (goals.includes('market_moves') || goals.includes('track_earnings')) {
+    return ['indexes', 'your_stocks', 'movers'];
+  }
+  return ['indexes', 'movers', 'your_stocks'];
+}
 
 export default function HomeScreen() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const { data: onboardingData, isComplete } = useOnboarding();
+
+  useEffect(() => {
+    if (isComplete) {
+      track('first_value_viewed', {
+        investing_style: onboardingData.investingStyle,
+        goals: onboardingData.goals,
+      });
+    }
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await queryClient.invalidateQueries({ queryKey: ['market'] });
       await queryClient.invalidateQueries({ queryKey: ['home'] });
+      await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     } finally {
       setRefreshing(false);
     }
   }, [queryClient]);
+
+  const panelOrder = getPanelOrder(onboardingData.goals);
+
+  const panels: Record<string, React.ReactNode> = {
+    indexes: <IndexCardsRow key="indexes" />,
+    movers: <TopMoversPanel key="movers" />,
+    your_stocks: isComplete ? <YourStocksPanel key="your_stocks" /> : null,
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -45,9 +81,8 @@ export default function HomeScreen() {
         }
       >
         <Header />
-        <IndexCardsRow />
         <HeatmapCalendarPanel />
-        <TopMoversPanel />
+        {panelOrder.map((key) => panels[key])}
       </ScrollView>
     </SafeAreaView>
   );
@@ -58,7 +93,6 @@ function Header() {
     <View style={styles.header}>
       <Text style={styles.title}>Home</Text>
       <View style={styles.icons}>
-        {/* TODO: navigate to Search screen (Feature 9) */}
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Search"
@@ -66,7 +100,6 @@ function Header() {
         >
           <Ionicons name="search-outline" size={22} color={HOME.textPrimary} />
         </TouchableOpacity>
-        {/* TODO: wire to alerts tab once tab structure update is approved */}
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Notifications"

@@ -1,5 +1,6 @@
 import VestoSplash from "@/components/VestoSplash";
 import { useAuth } from "@/context/auth";
+import { useOnboarding } from "@/context/onboarding-context";
 import { router } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
@@ -20,9 +21,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function EntryScreen() {
   const { session } = useAuth();
+  const { isComplete, isLoaded } = useOnboarding();
   const [splashDone, setSplashDone] = useState(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const onboardingRef = useRef({ isComplete, isLoaded });
+  onboardingRef.current = { isComplete, isLoaded };
 
   const logoScale = useSharedValue(0.72);
   const contentOpacity = useSharedValue(0);
@@ -30,18 +34,38 @@ export default function EntryScreen() {
   const handleSplashComplete = useCallback(() => {
     if (sessionRef.current) {
       router.replace("/(tabs)");
+      return;
+    }
+
+    // Wait for onboarding state to load before routing
+    const route = () => {
+      const { isComplete: complete } = onboardingRef.current;
+      if (complete) {
+        // Onboarding done, just needs to sign in/up
+        router.replace("/(onboarding)/signup");
+      } else {
+        // Show landing with CTA to start onboarding
+        logoScale.value = withTiming(1, {
+          duration: 700,
+          easing: Easing.out(Easing.cubic),
+        });
+        contentOpacity.value = withDelay(
+          150,
+          withTiming(1, { duration: 600, easing: Easing.out(Easing.quad) })
+        );
+        setSplashDone(true);
+      }
+    };
+
+    if (onboardingRef.current.isLoaded) {
+      route();
     } else {
-      // Logo slowly grows into place
-      logoScale.value = withTiming(1, {
-        duration: 700,
-        easing: Easing.out(Easing.cubic),
-      });
-      // Text + buttons fade in slightly after the logo starts
-      contentOpacity.value = withDelay(
-        150,
-        withTiming(1, { duration: 600, easing: Easing.out(Easing.quad) })
-      );
-      setSplashDone(true);
+      const check = setInterval(() => {
+        if (onboardingRef.current.isLoaded) {
+          clearInterval(check);
+          route();
+        }
+      }, 50);
     }
   }, []);
 
@@ -80,21 +104,20 @@ export default function EntryScreen() {
         <Animated.View style={contentStyle}>
           <View style={styles.copyBlock}>
             <Text style={styles.headline}>
-              Your edge in{"\n"}every market move.
+              Invest with{"\n"}more clarity.
             </Text>
             <Text style={styles.subtitle}>
-              Real-time alerts, AI insights, and portfolio tracking — built for
-              investors who mean business.
+              Get a personalized market feed built around your investing style, goals, and the stocks you follow.
             </Text>
           </View>
 
           <View style={styles.ctaBlock}>
             <TouchableOpacity
               style={styles.primaryBtn}
-              onPress={() => router.push("/(auth)/signup")}
+              onPress={() => router.push("/(onboarding)")}
               activeOpacity={0.85}
             >
-              <Text style={styles.primaryBtnText}>Get Started</Text>
+              <Text style={styles.primaryBtnText}>Build My Market Feed</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
