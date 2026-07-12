@@ -1,36 +1,40 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  RefreshControl,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQueryClient } from '@tanstack/react-query';
-import { useState, useCallback, useEffect } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import IndexCardsRow from '@/components/home/index-cards-row';
-import HeatmapCalendarPanel from '@/components/home/heatmap-calendar-panel';
-import TopMoversPanel from '@/components/home/top-movers-panel';
-import YourStocksPanel from '@/components/home/your-stocks-panel';
-import { HOME } from '@/components/home/home-tokens';
-import { useOnboarding } from '@/context/onboarding-context';
-import { track } from '@/lib/analytics';
-import type { OnboardingGoal } from '@/lib/onboarding-storage';
+import HeatmapCalendarPanel from "@/components/home/heatmap-calendar-panel";
+import { HOME } from "@/components/home/home-tokens";
+import IndexCardsRow from "@/components/home/index-cards-row";
+import TopMoversPanel from "@/components/home/top-movers-panel";
+import YourStocksPanel from "@/components/home/your-stocks-panel";
+import { TourTarget } from "@/components/tour/TourTarget";
+import { useOnboarding } from "@/context/onboarding-context";
+import { track } from "@/lib/analytics";
+import { useFeatureTourInit } from "@/hooks/use-feature-tour-init";
+import type { OnboardingGoal } from "@/lib/onboarding-storage";
 
-function getPanelOrder(goals: OnboardingGoal[]): ('your_stocks' | 'indexes' | 'movers')[] {
-  if (goals.includes('monitor_portfolio')) {
-    return ['your_stocks', 'indexes', 'movers'];
+function getPanelOrder(
+  goals: OnboardingGoal[],
+): ("your_stocks" | "indexes" | "movers")[] {
+  if (goals.includes("monitor_portfolio")) {
+    return ["your_stocks", "indexes", "movers"];
   }
-  if (goals.includes('trending_stocks') || goals.includes('momentum')) {
-    return ['indexes', 'movers', 'your_stocks'];
+  if (goals.includes("trending_stocks") || goals.includes("momentum")) {
+    return ["indexes", "movers", "your_stocks"];
   }
-  if (goals.includes('market_moves') || goals.includes('track_earnings')) {
-    return ['indexes', 'your_stocks', 'movers'];
+  if (goals.includes("market_moves") || goals.includes("track_earnings")) {
+    return ["indexes", "your_stocks", "movers"];
   }
-  return ['indexes', 'movers', 'your_stocks'];
+  return ["indexes", "movers", "your_stocks"];
 }
 
 export default function HomeScreen() {
@@ -38,9 +42,11 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { data: onboardingData, isComplete } = useOnboarding();
 
+  useFeatureTourInit(isComplete);
+
   useEffect(() => {
     if (isComplete) {
-      track('first_value_viewed', {
+      track("first_value_viewed", {
         investing_style: onboardingData.investingStyle,
         goals: onboardingData.goals,
       });
@@ -50,9 +56,9 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ['market'] });
-      await queryClient.invalidateQueries({ queryKey: ['home'] });
-      await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      await queryClient.invalidateQueries({ queryKey: ["market"] });
+      await queryClient.invalidateQueries({ queryKey: ["home"] });
+      await queryClient.invalidateQueries({ queryKey: ["watchlist"] });
     } finally {
       setRefreshing(false);
     }
@@ -61,13 +67,25 @@ export default function HomeScreen() {
   const panelOrder = getPanelOrder(onboardingData.goals);
 
   const panels: Record<string, React.ReactNode> = {
-    indexes: <IndexCardsRow key="indexes" />,
-    movers: <TopMoversPanel key="movers" />,
-    your_stocks: isComplete ? <YourStocksPanel key="your_stocks" /> : null,
+    indexes: (
+      <TourTarget key="indexes" stepId="index_cards">
+        <IndexCardsRow />
+      </TourTarget>
+    ),
+    movers: (
+      <TourTarget key="movers" stepId="top_movers">
+        <TopMoversPanel />
+      </TourTarget>
+    ),
+    your_stocks: isComplete ? (
+      <TourTarget key="your_stocks" stepId="your_stocks">
+        <YourStocksPanel />
+      </TourTarget>
+    ) : null,
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -81,7 +99,9 @@ export default function HomeScreen() {
         }
       >
         <Header />
-        <HeatmapCalendarPanel />
+        <TourTarget stepId="heatmap">
+          <HeatmapCalendarPanel />
+        </TourTarget>
         {panelOrder.map((key) => panels[key])}
       </ScrollView>
     </SafeAreaView>
@@ -105,7 +125,11 @@ function Header() {
           accessibilityLabel="Notifications"
           hitSlop={8}
         >
-          <Ionicons name="notifications-outline" size={22} color={HOME.textPrimary} />
+          <Ionicons
+            name="notifications-outline"
+            size={22}
+            color={HOME.textPrimary}
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -121,16 +145,16 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingTop: 6,
     paddingBottom: 14,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: "700",
     color: HOME.textPrimary,
   },
-  icons: { flexDirection: 'row', gap: 18, alignItems: 'center' },
+  icons: { flexDirection: "row", gap: 18, alignItems: "center" },
 });

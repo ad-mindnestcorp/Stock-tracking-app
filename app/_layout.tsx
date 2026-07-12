@@ -1,21 +1,23 @@
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import * as Linking from 'expo-linking';
-import Toast from 'react-native-toast-message';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { registerForPushNotifications } from '@/lib/notifications';
-import { supabase } from '@/lib/supabase';
-import { AuthProvider } from '@/context/auth';
-import { ThemeProvider, useTheme } from '@/context/theme-context';
-import { ErrorBoundary } from '@/components/error-boundary';
-import { queryClient } from '@/lib/query-client';
-import { initSentry, Sentry } from '@/lib/sentry';
-import { initI18n } from '@/lib/i18n';
-import { initAnalytics } from '@/lib/analytics';
-import { OnboardingProvider } from '@/context/onboarding-context';
-import { SubscriptionProvider } from '@/context/subscription-context';
+import { ErrorBoundary } from "@/components/error-boundary";
+import { TourOverlay } from "@/components/tour/TourOverlay";
+import { AuthProvider } from "@/context/auth";
+import { FeatureTourProvider } from "@/context/feature-tour-context";
+import { OnboardingProvider } from "@/context/onboarding-context";
+import { SubscriptionProvider } from "@/context/subscription-context";
+import { ThemeProvider, useTheme } from "@/context/theme-context";
+import { initAnalytics } from "@/lib/analytics";
+import { initI18n } from "@/lib/i18n";
+import { registerForPushNotifications } from "@/lib/notifications";
+import { queryClient } from "@/lib/query-client";
+import { initSentry, Sentry } from "@/lib/sentry";
+import { supabase } from "@/lib/supabase";
+import { QueryClientProvider } from "@tanstack/react-query";
+import * as Linking from "expo-linking";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
 
 // Initialise once before the component tree mounts
 initSentry();
@@ -25,7 +27,7 @@ initAnalytics().catch(console.error);
 function useOAuthDeepLink() {
   useEffect(() => {
     const handleUrl = ({ url }: { url: string }) => {
-      if (!url.includes('auth/callback')) return;
+      if (!url.includes("auth/callback")) return;
 
       // Email confirmation (type=signup) and password recovery (type=recovery):
       // Supabase sends token_hash + type in the link query params.
@@ -35,7 +37,13 @@ function useOAuthDeepLink() {
         supabase.auth
           .verifyOtp({
             token_hash: decodeURIComponent(tokenHashMatch[1]),
-            type: decodeURIComponent(typeMatch[1]) as 'signup' | 'recovery' | 'email' | 'invite' | 'magiclink' | 'email_change',
+            type: decodeURIComponent(typeMatch[1]) as
+              | "signup"
+              | "recovery"
+              | "email"
+              | "invite"
+              | "magiclink"
+              | "email_change",
           })
           .catch(console.error);
         return;
@@ -51,18 +59,18 @@ function useOAuthDeepLink() {
       }
 
       // Implicit flow fallback: extract tokens from URL fragment
-      const fragment = url.split('#')[1] ?? '';
+      const fragment = url.split("#")[1] ?? "";
       const params = new URLSearchParams(fragment);
-      const access_token = params.get('access_token');
-      const refresh_token = params.get('refresh_token');
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
       if (access_token) {
         supabase.auth
-          .setSession({ access_token, refresh_token: refresh_token ?? '' })
+          .setSession({ access_token, refresh_token: refresh_token ?? "" })
           .catch(console.error);
       }
     };
 
-    const subscription = Linking.addEventListener('url', handleUrl);
+    const subscription = Linking.addEventListener("url", handleUrl);
     Linking.getInitialURL().then((url) => {
       if (url) handleUrl({ url });
     });
@@ -85,15 +93,16 @@ function RootLayout() {
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen
           name="stock/[symbol]"
-          options={{ headerShown: false, presentation: 'card' }}
+          options={{ headerShown: false, presentation: "card" }}
         />
         <Stack.Screen
           name="paywall"
-          options={{ headerShown: false, presentation: 'modal' }}
+          options={{ headerShown: false, presentation: "modal" }}
         />
       </Stack>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <Toast />
+      <TourOverlay />
     </>
   );
 }
@@ -111,7 +120,9 @@ function App() {
             <AuthProvider>
               <OnboardingProvider>
                 <SubscriptionProvider>
-                  <RootLayout />
+                  <FeatureTourProvider>
+                    <RootLayout />
+                  </FeatureTourProvider>
                 </SubscriptionProvider>
               </OnboardingProvider>
             </AuthProvider>

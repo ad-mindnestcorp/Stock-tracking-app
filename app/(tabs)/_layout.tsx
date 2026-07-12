@@ -1,17 +1,31 @@
-import { Tabs, Redirect } from 'expo-router';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@/context/theme-context';
-import { useAuth } from '@/context/auth';
+import { useAuth } from "@/context/auth";
+import { useTheme } from "@/context/theme-context";
+import { Ionicons } from "@expo/vector-icons";
+import { Redirect, Tabs } from "expo-router";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-function TabIcon({ name, color, focused }: { name: IconName; color: string; focused: boolean }) {
+function TabIcon({
+  name,
+  color,
+  focused,
+}: {
+  name: IconName;
+  color: string;
+  focused: boolean;
+}) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.iconWrap, focused && { backgroundColor: colors.primary }]}>
-      <Ionicons name={name} size={22} color={focused ? colors.onPrimary : color} />
+    <View
+      style={[styles.iconWrap, focused && { backgroundColor: colors.primary }]}
+    >
+      <Ionicons
+        name={name}
+        size={22}
+        color={focused ? colors.onPrimary : color}
+      />
     </View>
   );
 }
@@ -23,7 +37,14 @@ export default function TabLayout() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.background,
+        }}
+      >
         <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
@@ -53,7 +74,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: "Home",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name="home" color={color} focused={focused} />
           ),
@@ -62,7 +83,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="watchlist"
         options={{
-          title: 'Watchlist',
+          title: "Watchlist",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name="star" color={color} focused={focused} />
           ),
@@ -71,7 +92,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ai"
         options={{
-          title: 'AI',
+          title: "AI",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name="search" color={color} focused={focused} />
           ),
@@ -80,7 +101,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="news"
         options={{
-          title: 'News',
+          title: "News",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name="newspaper" color={color} focused={focused} />
           ),
@@ -89,7 +110,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="earnings"
         options={{
-          title: 'Earnings',
+          title: "Earnings",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name="calendar" color={color} focused={focused} />
           ),
@@ -100,7 +121,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: "Profile",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name="person" color={color} focused={focused} />
           ),
@@ -113,13 +134,13 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   iconWrap: {
     width: 40,
     height: 32,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
