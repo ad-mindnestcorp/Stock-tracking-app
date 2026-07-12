@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import {
   Modal,
   Pressable,
@@ -16,7 +17,6 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import {
   TOUR_STEPS,
@@ -65,7 +65,6 @@ const ACCENT = '#CCFF00';
 const SPOTLIGHT_RADIUS = 14;
 const TOOLTIP_GAP = 14;
 const TOOLTIP_H_PAD = 16;
-const TAB_BAR_HEIGHT = 56;
 
 // ─── glow ring ────────────────────────────────────────────────────────────────
 
@@ -170,26 +169,16 @@ export function TourOverlay() {
   } = useFeatureTour();
 
   const { width: screenW, height: screenH } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const router = useRouter();
 
-  // For the tab_bar step there's no TourTarget — compute it from screen geometry.
-  const [tabBarLayout, setTabBarLayout] = useState<TourStepLayout | null>(null);
-
+  // Auto-navigate to the tab required by this step.
   useEffect(() => {
-    if (isActive && currentStep?.id === 'tab_bar' && !stepLayout) {
-      const tabH = TAB_BAR_HEIGHT + insets.bottom;
-      setTabBarLayout({
-        x: 0,
-        y: screenH - tabH,
-        width: screenW,
-        height: tabH,
-      });
-    } else {
-      setTabBarLayout(null);
-    }
-  }, [isActive, currentStep?.id, stepLayout, screenH, insets.bottom, screenW]);
+    if (!isActive || !currentStep?.tabRoute) return;
+    router.navigate(currentStep.tabRoute as never);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, currentStep?.id]);
 
-  const effectiveLayout = stepLayout ?? tabBarLayout;
+  const effectiveLayout = stepLayout;
 
   // Tooltip position — auto: above spotlight if it's in the lower half of screen.
   const TOOLTIP_MAX_W = screenW - TOOLTIP_H_PAD * 2;
@@ -217,6 +206,7 @@ export function TourOverlay() {
   const handleSkip = () => {
     skipTour();
     markTourComplete().catch(console.error);
+    router.navigate('/(tabs)/' as never);
   };
 
   const handleNext = () => {
@@ -226,6 +216,7 @@ export function TourOverlay() {
   const handleDismissCompletion = () => {
     markTourComplete().catch(console.error);
     dismissCompletion();
+    router.navigate('/(tabs)/' as never);
   };
 
   const visible = isActive || isCompleting;

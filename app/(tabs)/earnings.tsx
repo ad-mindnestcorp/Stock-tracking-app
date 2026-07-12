@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import ImportantEarnings from '@/components/home/important-earnings';
 import { HOME } from '@/components/home/home-tokens';
+import { TourTarget } from '@/components/tour/TourTarget';
 
 export default function EarningsScreen() {
   const queryClient = useQueryClient();
@@ -36,7 +37,9 @@ export default function EarningsScreen() {
           />
         }
       >
-        <ImportantEarnings />
+        <TourTarget stepId="earnings_screen">
+          <ImportantEarnings />
+        </TourTarget>
       </ScrollView>
     </SafeAreaView>
   );

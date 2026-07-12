@@ -1,6 +1,7 @@
 import { HOME } from '@/components/home/home-tokens';
 import { SectionError } from '@/components/home/section-states';
 import NewsCard from '@/components/news/NewsCard';
+import { TourTarget } from '@/components/tour/TourTarget';
 import {
   useAggregatedNews,
   useInvalidateNews,
@@ -215,7 +216,9 @@ export default function NewsScreen() {
         <Text style={styles.title}>News</Text>
       </View>
 
-      <FilterBar active={filter} onChange={setFilter} />
+      <TourTarget stepId="news_screen">
+        <FilterBar active={filter} onChange={setFilter} />
+      </TourTarget>
 
       {newCount > 0 && (
         <View style={styles.bannerWrap}>

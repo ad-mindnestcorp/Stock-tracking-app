@@ -33,7 +33,7 @@ export function TourTarget({ stepId, children, padding = 10 }: TourTargetProps) 
           });
         }
       });
-    }, 180);
+    }, 350);
 
     return () => clearTimeout(timerId);
   }, [isActive, currentStep?.id, stepId, padding, setStepLayout]);

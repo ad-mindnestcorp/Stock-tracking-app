@@ -11,6 +11,8 @@ export type TourStep = {
   id: string;
   title: string;
   description: string;
+  /** Expo Router href to navigate to when this step becomes active */
+  tabRoute?: string;
 };
 
 export const TOUR_STEPS: TourStep[] = [
@@ -39,10 +41,32 @@ export const TOUR_STEPS: TourStep[] = [
       'Visualise sector performance at a glance. Greens are gaining, reds are falling.',
   },
   {
-    id: 'tab_bar',
-    title: 'Navigate the app',
+    id: 'watchlist_screen',
+    title: 'Manage your watchlists',
     description:
-      'Explore your Watchlist, AI research, News, Earnings calendar, and Profile from here.',
+      'Organise stocks into multiple watchlists. Each row shows RSI, 52-week position, momentum, and volume signals at a glance.',
+    tabRoute: '/(tabs)/watchlist',
+  },
+  {
+    id: 'ai_screen',
+    title: 'AI Stock Research',
+    description:
+      'Search any ticker for an instant institutional-grade report — research foundation, valuation, risk analysis, and an AI verdict.',
+    tabRoute: '/(tabs)/ai',
+  },
+  {
+    id: 'news_screen',
+    title: 'Stay informed',
+    description:
+      'Filter news by Markets, your stocks, Earnings, or the broader Economy. Stories update throughout the day.',
+    tabRoute: '/(tabs)/news',
+  },
+  {
+    id: 'earnings_screen',
+    title: 'Earnings calendar',
+    description:
+      'See upcoming and recent earnings for the stocks you follow. Know exactly when companies report before it moves the price.',
+    tabRoute: '/(tabs)/earnings',
   },
 ];
 

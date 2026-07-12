@@ -1,5 +1,6 @@
 import LineChart from "@/components/line-chart";
 import { SkeletonListScreen } from "@/components/skeleton";
+import { TourTarget } from "@/components/tour/TourTarget";
 import { Radius } from "@/constants/theme";
 import { useTheme } from "@/context/theme-context";
 import {
@@ -86,129 +87,133 @@ export default function WatchlistScreen() {
                 </TouchableWithoutFeedback>
             )}
 
-            {/* Header */}
-            <View style={styles.pageHeader}>
-                {/* Left: title + info */}
-                <View style={styles.headerLeft}>
-                    <Text style={styles.headerTitle}>Watchlist</Text>
-                    <TouchableOpacity
-                        onPress={() => setInfoVisible(true)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        accessibilityLabel="Indicator explanations"
-                        accessibilityRole="button"
-                    >
-                        <Ionicons
-                            name="information-circle-outline"
-                            size={20}
-                            color={colors.textMuted}
-                        />
-                    </TouchableOpacity>
-                </View>
-
-                {/* Right: search icon + watchlist picker */}
-                <View style={styles.headerRight}>
-                <TouchableOpacity
-                    onPress={() => setSearchVisible((v) => !v)}
-                    style={styles.searchIconBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityLabel={searchVisible ? "Close search" : "Search stocks"}
-                    accessibilityRole="button"
-                >
-                    <Ionicons
-                        name={searchVisible ? "close" : "search"}
-                        size={20}
-                        color={colors.textSecondary}
-                    />
-                </TouchableOpacity>
-                <View style={styles.wlPickerContainer}>
-                    <TouchableOpacity
-                        style={styles.wlPickerBtn}
-                        onPress={() => setDropdownOpen((v) => !v)}
-                        accessibilityRole="button"
-                        accessibilityLabel="Select watchlist"
-                    >
-                        <Text style={styles.wlPickerText} numberOfLines={1}>
-                            {watchlists.find((wl) => wl.id === selectedId)?.name ?? "Watchlist"}
-                        </Text>
-                        <Ionicons
-                            name={dropdownOpen ? "chevron-up" : "chevron-down"}
-                            size={14}
-                            color={colors.textSecondary}
-                        />
-                    </TouchableOpacity>
-
-                    {dropdownOpen && (
-                        <View
-                            style={[
-                                styles.wlDropdown,
-                                { backgroundColor: colors.surface, borderColor: colors.border },
-                            ]}
-                        >
-                            {watchlists.map((wl) => {
-                                const isSelected = wl.id === selectedId;
-                                return (
-                                    <TouchableOpacity
-                                        key={wl.id}
-                                        style={[
-                                            styles.wlDropdownRow,
-                                            isSelected && { backgroundColor: colors.primary + "18" },
-                                        ]}
-                                        onPress={() => {
-                                            setSelectedId(wl.id);
-                                            setDropdownOpen(false);
-                                        }}
-                                        onLongPress={() => {
-                                            setDropdownOpen(false);
-                                            setOptionsTarget(wl);
-                                        }}
-                                        delayLongPress={400}
-                                        accessibilityRole="menuitem"
-                                        accessibilityLabel={`${wl.name}${isSelected ? ", selected" : ""}, long press to manage`}
-                                        accessibilityState={{ selected: isSelected }}
-                                    >
-                                        <Ionicons
-                                            name="checkmark"
-                                            size={16}
-                                            color={isSelected ? colors.primary : "transparent"}
-                                        />
-                                        <Text
-                                            style={[
-                                                styles.wlDropdownText,
-                                                { color: isSelected ? colors.primary : colors.textPrimary },
-                                            ]}
-                                        >
-                                            {wl.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                            <View style={[styles.wlDropdownDivider, { backgroundColor: colors.border }]} />
+            {/* Header + subtitle — spotlighted in feature tour */}
+            <TourTarget stepId="watchlist_screen">
+                <View>
+                    <View style={styles.pageHeader}>
+                        {/* Left: title + info */}
+                        <View style={styles.headerLeft}>
+                            <Text style={styles.headerTitle}>Watchlist</Text>
                             <TouchableOpacity
-                                style={styles.wlDropdownRow}
-                                onPress={() => {
-                                    setDropdownOpen(false);
-                                    setCreateVisible(true);
-                                }}
+                                onPress={() => setInfoVisible(true)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityLabel="Indicator explanations"
                                 accessibilityRole="button"
-                                accessibilityLabel="Create new watchlist"
                             >
-                                <Ionicons name="add" size={16} color={colors.primary} />
-                                <Text style={[styles.wlDropdownText, { color: colors.primary }]}>
-                                    New Watchlist
-                                </Text>
+                                <Ionicons
+                                    name="information-circle-outline"
+                                    size={20}
+                                    color={colors.textMuted}
+                                />
                             </TouchableOpacity>
                         </View>
-                    )}
-                </View>
-                </View>
-            </View>
 
-            {/* Subtitle */}
-            <View style={styles.subtitleRow}>
-                <Text style={styles.subtitle}>
-                    {stocks.length} stock{stocks.length !== 1 ? "s" : ""} monitored
-                </Text>
-            </View>
+                        {/* Right: search icon + watchlist picker */}
+                        <View style={styles.headerRight}>
+                        <TouchableOpacity
+                            onPress={() => setSearchVisible((v) => !v)}
+                            style={styles.searchIconBtn}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel={searchVisible ? "Close search" : "Search stocks"}
+                            accessibilityRole="button"
+                        >
+                            <Ionicons
+                                name={searchVisible ? "close" : "search"}
+                                size={20}
+                                color={colors.textSecondary}
+                            />
+                        </TouchableOpacity>
+                        <View style={styles.wlPickerContainer}>
+                            <TouchableOpacity
+                                style={styles.wlPickerBtn}
+                                onPress={() => setDropdownOpen((v) => !v)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Select watchlist"
+                            >
+                                <Text style={styles.wlPickerText} numberOfLines={1}>
+                                    {watchlists.find((wl) => wl.id === selectedId)?.name ?? "Watchlist"}
+                                </Text>
+                                <Ionicons
+                                    name={dropdownOpen ? "chevron-up" : "chevron-down"}
+                                    size={14}
+                                    color={colors.textSecondary}
+                                />
+                            </TouchableOpacity>
+
+                            {dropdownOpen && (
+                                <View
+                                    style={[
+                                        styles.wlDropdown,
+                                        { backgroundColor: colors.surface, borderColor: colors.border },
+                                    ]}
+                                >
+                                    {watchlists.map((wl) => {
+                                        const isSelected = wl.id === selectedId;
+                                        return (
+                                            <TouchableOpacity
+                                                key={wl.id}
+                                                style={[
+                                                    styles.wlDropdownRow,
+                                                    isSelected && { backgroundColor: colors.primary + "18" },
+                                                ]}
+                                                onPress={() => {
+                                                    setSelectedId(wl.id);
+                                                    setDropdownOpen(false);
+                                                }}
+                                                onLongPress={() => {
+                                                    setDropdownOpen(false);
+                                                    setOptionsTarget(wl);
+                                                }}
+                                                delayLongPress={400}
+                                                accessibilityRole="menuitem"
+                                                accessibilityLabel={`${wl.name}${isSelected ? ", selected" : ""}, long press to manage`}
+                                                accessibilityState={{ selected: isSelected }}
+                                            >
+                                                <Ionicons
+                                                    name="checkmark"
+                                                    size={16}
+                                                    color={isSelected ? colors.primary : "transparent"}
+                                                />
+                                                <Text
+                                                    style={[
+                                                        styles.wlDropdownText,
+                                                        { color: isSelected ? colors.primary : colors.textPrimary },
+                                                    ]}
+                                                >
+                                                    {wl.name}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                    <View style={[styles.wlDropdownDivider, { backgroundColor: colors.border }]} />
+                                    <TouchableOpacity
+                                        style={styles.wlDropdownRow}
+                                        onPress={() => {
+                                            setDropdownOpen(false);
+                                            setCreateVisible(true);
+                                        }}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Create new watchlist"
+                                    >
+                                        <Ionicons name="add" size={16} color={colors.primary} />
+                                        <Text style={[styles.wlDropdownText, { color: colors.primary }]}>
+                                            New Watchlist
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                        </View>
+                    </View>
+
+                    {/* Subtitle */}
+                    <View style={styles.subtitleRow}>
+                        <Text style={styles.subtitle}>
+                            {stocks.length} stock{stocks.length !== 1 ? "s" : ""} monitored
+                        </Text>
+                    </View>
+                </View>
+            </TourTarget>
 
             <IndicatorInfoModal
                 visible={infoVisible}

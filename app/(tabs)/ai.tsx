@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { watchlistApi, type StockSearchResult } from '@/lib/api';
 import { HOME } from '@/components/home/home-tokens';
+import { TourTarget } from '@/components/tour/TourTarget';
 import { useAIResearch } from '@/hooks/use-ai-research';
 import { StockSummaryCard } from '@/components/ai/stock-summary-card';
 import { ResearchSectionCard } from '@/components/ai/research-section-card';
@@ -241,8 +242,9 @@ export default function AIScreen() {
             </View>
           </View>
 
-          {/* Search bar */}
-          <View style={styles.searchWrap}>
+          {/* Search bar — spotlighted in feature tour */}
+          <TourTarget stepId="ai_screen">
+            <View style={styles.searchWrap}>
             <View style={styles.searchBar}>
               <Ionicons name="search" size={18} color={HOME.textSecondary} />
               <TextInput
@@ -288,7 +290,8 @@ export default function AIScreen() {
                 )}
               </View>
             )}
-          </View>
+            </View>
+          </TourTarget>
 
           {/* Stock selected: show full research UI */}
           {selectedStock && selectedTier && (
